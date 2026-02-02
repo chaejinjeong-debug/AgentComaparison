@@ -47,12 +47,68 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
+# Define agent class inline to avoid module reference issues with cloudpickle
+class GeminiAgent:
+    """Minimal Gemini agent for Reasoning Engine deployment."""
+
+    def __init__(
+        self,
+        model: str = "gemini-2.0-flash",
+        project: str = "",
+        location: str = "us-central1",
+        system_prompt: str = "You are a helpful AI assistant.",
+    ) -> None:
+        self.model = model
+        self.project = project
+        self.location = location
+        self.system_prompt = system_prompt
+        self._client = None
+
+    def set_up(self) -> None:
+        """Initialize the Gemini client."""
+        import vertexai
+        from vertexai.generative_models import GenerativeModel
+
+        vertexai.init(project=self.project, location=self.location)
+        self._client = GenerativeModel(
+            model_name=self.model,
+            system_instruction=self.system_prompt,
+        )
+
+    def query(self, *, message: str, **kwargs) -> dict:
+        """Query the agent."""
+        from datetime import UTC, datetime
+
+        if self._client is None:
+            self.set_up()
+
+        start_time = datetime.now(UTC)
+
+        try:
+            response = self._client.generate_content(message)
+            response_text = response.text
+
+            return {
+                "response": response_text,
+                "metadata": {
+                    "model": self.model,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    "latency_ms": (datetime.now(UTC) - start_time).total_seconds() * 1000,
+                },
+            }
+        except Exception as e:
+            return {
+                "response": f"Error: {e}",
+                "metadata": {"error": str(e)},
+            }
+
+
 def create_agent_instance(
     model: str,
     project: str,
     location: str,
     system_prompt: str,
-) -> "PydanticAIAgentWrapper":
+) -> GeminiAgent:
     """Create an agent instance for deployment.
 
     Args:
@@ -62,30 +118,27 @@ def create_agent_instance(
         system_prompt: System prompt for the agent
 
     Returns:
-        Configured PydanticAIAgentWrapper instance
+        Configured GeminiAgent instance
     """
-    from agent_engine.agent import PydanticAIAgentWrapper
-    from agent_engine.tools import DEFAULT_TOOLS
-
-    agent = PydanticAIAgentWrapper(
+    agent = GeminiAgent(
         model=model,
         project=project,
         location=location,
         system_prompt=system_prompt,
-        tools=DEFAULT_TOOLS,
     )
 
     return agent
 
 
 def deploy_agent(
-    agent: "PydanticAIAgentWrapper",
+    agent: GeminiAgent,
     project: str,
     location: str,
     display_name: str,
     description: str,
+    staging_bucket: str | None = None,
 ) -> str:
-    """Deploy the agent to VertexAI Agent Engine.
+    """Deploy the agent to VertexAI Agent Engine (Reasoning Engine).
 
     Args:
         agent: Agent instance to deploy
@@ -93,29 +146,40 @@ def deploy_agent(
         location: GCP region
         display_name: Agent display name
         description: Agent description
+        staging_bucket: GCS bucket for staging (e.g., "gs://bucket-name")
 
     Returns:
         Deployed agent resource name
     """
-    from google.cloud import aiplatform
+    import vertexai
+    from vertexai.preview.reasoning_engines import ReasoningEngine
 
     logger.info(
         "starting_deployment",
         project=project,
         location=location,
         display_name=display_name,
+        staging_bucket=staging_bucket,
     )
 
-    # Initialize Vertex AI
-    aiplatform.init(project=project, location=location)
+    # Create staging bucket if not provided
+    if not staging_bucket:
+        staging_bucket = f"gs://{project}-agent-staging-{location.replace('-', '')}"
 
-    # Deploy to Agent Engine
-    deployed_agent = aiplatform.agent_engines.create(
-        agent=agent,
-        config={
-            "display_name": display_name,
-            "description": description,
-        },
+    # Initialize Vertex AI with staging bucket
+    vertexai.init(project=project, location=location, staging_bucket=staging_bucket)
+
+    # Get requirements for deployment (minimal)
+    requirements = [
+        "google-cloud-aiplatform>=1.78.0",
+    ]
+
+    # Deploy to Reasoning Engine
+    deployed_agent = ReasoningEngine.create(
+        reasoning_engine=agent,
+        requirements=requirements,
+        display_name=display_name,
+        description=description,
     )
 
     agent_name = deployed_agent.resource_name
@@ -140,22 +204,23 @@ def get_agent_status(agent_name: str, project: str, location: str) -> dict:
     Returns:
         Agent status dictionary
     """
-    from google.cloud import aiplatform
+    import vertexai
+    from vertexai.preview.reasoning_engines import ReasoningEngine
 
-    aiplatform.init(project=project, location=location)
+    vertexai.init(project=project, location=location)
 
-    agent = aiplatform.agent_engines.get(agent_name)
+    agent = ReasoningEngine(agent_name)
 
     return {
         "name": agent.resource_name,
-        "display_name": agent.display_name,
-        "state": agent.state.name if hasattr(agent, "state") else "UNKNOWN",
-        "create_time": str(agent.create_time) if hasattr(agent, "create_time") else None,
+        "display_name": getattr(agent, "display_name", "N/A"),
+        "state": getattr(agent, "state", "UNKNOWN"),
+        "create_time": str(getattr(agent, "create_time", None)),
     }
 
 
 def list_agents(project: str, location: str) -> list[dict]:
-    """List all deployed agents.
+    """List all deployed agents (Reasoning Engines).
 
     Args:
         project: GCP project ID
@@ -164,23 +229,24 @@ def list_agents(project: str, location: str) -> list[dict]:
     Returns:
         List of agent information dictionaries
     """
-    from google.cloud import aiplatform
+    import vertexai
+    from vertexai.preview.reasoning_engines import ReasoningEngine
 
-    aiplatform.init(project=project, location=location)
+    vertexai.init(project=project, location=location)
 
-    agents = aiplatform.agent_engines.list()
+    agents = ReasoningEngine.list()
 
     return [
         {
             "name": agent.resource_name,
-            "display_name": agent.display_name,
+            "display_name": getattr(agent, "display_name", "N/A"),
         }
         for agent in agents
     ]
 
 
 def delete_agent(agent_name: str, project: str, location: str) -> bool:
-    """Delete a deployed agent.
+    """Delete a deployed agent (Reasoning Engine).
 
     Args:
         agent_name: Agent resource name or ID
@@ -190,15 +256,40 @@ def delete_agent(agent_name: str, project: str, location: str) -> bool:
     Returns:
         True if deletion was successful
     """
-    from google.cloud import aiplatform
+    import vertexai
+    from vertexai.preview.reasoning_engines import ReasoningEngine
 
-    aiplatform.init(project=project, location=location)
+    vertexai.init(project=project, location=location)
 
-    agent = aiplatform.agent_engines.get(agent_name)
+    agent = ReasoningEngine(agent_name)
     agent.delete()
 
     logger.info("agent_deleted", agent_name=agent_name)
     return True
+
+
+def query_agent(agent_name: str, project: str, location: str, message: str) -> dict:
+    """Query a deployed agent (Reasoning Engine).
+
+    Args:
+        agent_name: Agent resource name or ID
+        project: GCP project ID
+        location: GCP region
+        message: Message to send to the agent
+
+    Returns:
+        Agent response dictionary
+    """
+    import vertexai
+    from vertexai.preview.reasoning_engines import ReasoningEngine
+
+    vertexai.init(project=project, location=location)
+
+    agent = ReasoningEngine(agent_name)
+    response = agent.query(message=message)
+
+    logger.info("query_completed", agent_name=agent_name)
+    return response
 
 
 def main() -> None:
@@ -231,6 +322,10 @@ def main() -> None:
         default="You are a helpful AI assistant.",
         help="System prompt",
     )
+    deploy_parser.add_argument(
+        "--staging-bucket",
+        help="GCS bucket for staging (e.g., gs://bucket-name). Defaults to gs://{project}-agent-staging",
+    )
 
     # Status command
     status_parser = subparsers.add_parser("status", help="Get agent status")
@@ -258,6 +353,15 @@ def main() -> None:
         "--force", action="store_true", help="Force deletion without confirmation"
     )
 
+    # Query command
+    query_parser = subparsers.add_parser("query", help="Query a deployed agent")
+    query_parser.add_argument("--project", required=True, help="GCP project ID")
+    query_parser.add_argument(
+        "--location", default="asia-northeast3", help="GCP region"
+    )
+    query_parser.add_argument("--agent-name", required=True, help="Agent resource name")
+    query_parser.add_argument("--message", required=True, help="Message to send to the agent")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -280,6 +384,7 @@ def main() -> None:
                 location=args.location,
                 display_name=args.display_name,
                 description=args.description,
+                staging_bucket=args.staging_bucket,
             )
 
             print(f"\nAgent deployed successfully!")
@@ -314,6 +419,21 @@ def main() -> None:
                 location=args.location,
             )
             print(f"\nAgent {args.agent_name} deleted successfully!")
+
+        elif args.command == "query":
+            response = query_agent(
+                agent_name=args.agent_name,
+                project=args.project,
+                location=args.location,
+                message=args.message,
+            )
+            print("\nAgent Response:")
+            if isinstance(response, dict):
+                print(f"  Response: {response.get('response', response)}")
+                if response.get('tool_calls'):
+                    print(f"  Tool Calls: {response.get('tool_calls')}")
+            else:
+                print(f"  {response}")
 
     except Exception as e:
         logger.error("command_failed", error=str(e), command=args.command)

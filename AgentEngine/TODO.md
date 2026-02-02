@@ -12,8 +12,8 @@
 - [x] uv 패키지 매니저 설치 및 설정
 - [x] `pyproject.toml` 작성 (uv 기반)
 - [x] Pydantic AI (>= 1.51.0) 의존성 추가
-- [ ] GCP 프로젝트 설정 및 인증 구성
-- [ ] VertexAI Agent Engine 연동 테스트
+- [x] GCP 프로젝트 설정 및 인증 구성
+- [x] VertexAI Agent Engine 연동 테스트
 
 ### Week 2: Agent Wrapper 개발
 - [x] **AC-001**: Agent Engine 규격 준수 (`__init__`, `set_up`, `query` 메서드)
@@ -26,7 +26,7 @@
 
 ### Week 3: 배포 파이프라인
 - [x] **DM-001**: SDK 기반 배포 스크립트 개발
-- [ ] Agent Engine 배포 테스트
+- [x] Agent Engine 배포 테스트
 - [x] Docker 기반 로컬 개발/테스트 환경 구축
   - [x] `Dockerfile` 작성
   - [x] `docker-compose.yml` 작성
