@@ -8,35 +8,35 @@
 ## Phase 1: Foundation (Week 1-4)
 
 ### Week 1: 개발 환경 설정
-- [ ] Python 3.11+ 개발 환경 구성
-- [ ] uv 패키지 매니저 설치 및 설정
-- [ ] `pyproject.toml` 작성 (uv 기반)
-- [ ] Pydantic AI (>= 1.51.0) 의존성 추가
+- [x] Python 3.11+ 개발 환경 구성
+- [x] uv 패키지 매니저 설치 및 설정
+- [x] `pyproject.toml` 작성 (uv 기반)
+- [x] Pydantic AI (>= 1.51.0) 의존성 추가
 - [ ] GCP 프로젝트 설정 및 인증 구성
 - [ ] VertexAI Agent Engine 연동 테스트
 
 ### Week 2: Agent Wrapper 개발
-- [ ] **AC-001**: Agent Engine 규격 준수 (`__init__`, `set_up`, `query` 메서드)
-- [ ] **AC-002**: Pydantic AI Agent 래핑 구현
-- [ ] **AC-003**: GoogleProvider를 통한 Gemini 모델 연동
-- [ ] **AC-004**: 동기/비동기 지원 (`query`, `aquery`)
-- [ ] **AC-006**: 기본 에러 핸들링 구현
-- [ ] **TS-001**: Tool 등록 메커니즘 구현 (@tool 데코레이터)
-- [ ] **TS-002**: 기본 Tool 구현 (검색, 계산, 날짜/시간)
+- [x] **AC-001**: Agent Engine 규격 준수 (`__init__`, `set_up`, `query` 메서드)
+- [x] **AC-002**: Pydantic AI Agent 래핑 구현
+- [x] **AC-003**: GoogleProvider를 통한 Gemini 모델 연동
+- [x] **AC-004**: 동기/비동기 지원 (`query`, `aquery`)
+- [x] **AC-006**: 기본 에러 핸들링 구현
+- [x] **TS-001**: Tool 등록 메커니즘 구현 (@tool 데코레이터)
+- [x] **TS-002**: 기본 Tool 구현 (검색, 계산, 날짜/시간)
 
 ### Week 3: 배포 파이프라인
-- [ ] **DM-001**: SDK 기반 배포 스크립트 개발
+- [x] **DM-001**: SDK 기반 배포 스크립트 개발
 - [ ] Agent Engine 배포 테스트
-- [ ] Docker 기반 로컬 개발/테스트 환경 구축
-  - [ ] `Dockerfile` 작성
-  - [ ] `docker-compose.yml` 작성
-  - [ ] 로컬 Agent Engine 에뮬레이션 환경 구성
+- [x] Docker 기반 로컬 개발/테스트 환경 구축
+  - [x] `Dockerfile` 작성
+  - [x] `docker-compose.yml` 작성
+  - [x] 로컬 Agent Engine 에뮬레이션 환경 구성
 
 ### Week 4: 소스 배포 및 테스트
-- [ ] **DM-002**: 소스 기반 배포 구현 (CI/CD용)
-- [ ] **PM-001**: System Prompt 설정 (환경 변수/설정 파일)
-- [ ] 단위 테스트 작성
-- [ ] Phase 1 문서화
+- [x] **DM-002**: 소스 기반 배포 구현 (CI/CD용)
+- [x] **PM-001**: System Prompt 설정 (환경 변수/설정 파일)
+- [x] 단위 테스트 작성
+- [x] Phase 1 문서화
 
 **Milestone**: Agent Engine 배포 및 기본 쿼리 동작 확인
 
