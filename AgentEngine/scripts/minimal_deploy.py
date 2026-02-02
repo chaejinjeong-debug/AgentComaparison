@@ -3,15 +3,31 @@
 
 This script creates and deploys a minimal agent that uses Gemini directly
 without external module dependencies.
+
+Configuration is loaded from .env file in the AgentEngine directory.
 """
 
 import argparse
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 import structlog
+
+# Load .env file from AgentEngine directory
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(env_path)
+
+# Get defaults from environment
+DEFAULT_PROJECT = os.getenv("AGENT_PROJECT_ID", "")
+DEFAULT_LOCATION = os.getenv("AGENT_LOCATION", "us-central1")
+DEFAULT_MODEL = os.getenv("AGENT_MODEL", "gemini-2.0-flash")
+DEFAULT_DISPLAY_NAME = os.getenv("AGENT_DISPLAY_NAME", "gemini-agent")
+DEFAULT_DESCRIPTION = os.getenv("AGENT_DESCRIPTION", "Gemini Agent on Reasoning Engine")
+DEFAULT_SYSTEM_PROMPT = os.getenv("AGENT_SYSTEM_PROMPT", "You are a helpful AI assistant.")
 
 structlog.configure(
     processors=[
@@ -194,34 +210,30 @@ def main() -> None:
 
     # Deploy command
     deploy_parser = subparsers.add_parser("deploy", help="Deploy a new agent")
-    deploy_parser.add_argument("--project", required=True, help="GCP project ID")
-    deploy_parser.add_argument("--location", default="us-central1", help="GCP region")
-    deploy_parser.add_argument("--model", default="gemini-2.0-flash", help="Gemini model")
-    deploy_parser.add_argument("--display-name", default="gemini-agent", help="Display name")
-    deploy_parser.add_argument(
-        "--description", default="Gemini Agent on Reasoning Engine", help="Description"
-    )
-    deploy_parser.add_argument(
-        "--system-prompt", default="You are a helpful AI assistant.", help="System prompt"
-    )
+    deploy_parser.add_argument("--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})")
+    deploy_parser.add_argument("--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})")
+    deploy_parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Gemini model (default: {DEFAULT_MODEL})")
+    deploy_parser.add_argument("--display-name", default=DEFAULT_DISPLAY_NAME, help=f"Display name (default: {DEFAULT_DISPLAY_NAME})")
+    deploy_parser.add_argument("--description", default=DEFAULT_DESCRIPTION, help="Description")
+    deploy_parser.add_argument("--system-prompt", default=DEFAULT_SYSTEM_PROMPT, help="System prompt")
     deploy_parser.add_argument("--staging-bucket", help="GCS staging bucket")
 
     # List command
     list_parser = subparsers.add_parser("list", help="List agents")
-    list_parser.add_argument("--project", required=True, help="GCP project ID")
-    list_parser.add_argument("--location", default="us-central1", help="GCP region")
+    list_parser.add_argument("--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})")
+    list_parser.add_argument("--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})")
 
     # Query command
     query_parser = subparsers.add_parser("query", help="Query an agent")
-    query_parser.add_argument("--project", required=True, help="GCP project ID")
-    query_parser.add_argument("--location", default="us-central1", help="GCP region")
+    query_parser.add_argument("--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})")
+    query_parser.add_argument("--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})")
     query_parser.add_argument("--agent-name", required=True, help="Agent resource name")
     query_parser.add_argument("--message", required=True, help="Message to send")
 
     # Delete command
     delete_parser = subparsers.add_parser("delete", help="Delete an agent")
-    delete_parser.add_argument("--project", required=True, help="GCP project ID")
-    delete_parser.add_argument("--location", default="us-central1", help="GCP region")
+    delete_parser.add_argument("--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})")
+    delete_parser.add_argument("--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})")
     delete_parser.add_argument("--agent-name", required=True, help="Agent resource name")
     delete_parser.add_argument("--force", action="store_true", help="Skip confirmation")
 
@@ -229,6 +241,11 @@ def main() -> None:
 
     if args.command is None:
         parser.print_help()
+        sys.exit(1)
+
+    # Validate project is set
+    if not args.project:
+        print("\nError: --project is required. Set AGENT_PROJECT_ID in .env or pass --project")
         sys.exit(1)
 
     try:
