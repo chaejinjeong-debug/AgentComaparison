@@ -1,0 +1,104 @@
+# Docker Compose for local development environment
+# Usage: docker-compose -f docker/docker-compose.yml up
+
+services:
+  # Main agent service
+  agent:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: pydantic-ai-agent
+    env_file:
+      - ../.env
+    environment:
+      - LOG_LEVEL=DEBUG
+      - LOG_FORMAT=text
+    volumes:
+      # Mount source code for live reloading during development
+      - ../src:/app/src:ro
+      - ../tests:/app/tests:ro
+      - ../scripts:/app/scripts:ro
+      # Mount GCP credentials if available
+      - ${GOOGLE_APPLICATION_CREDENTIALS:-/dev/null}:/app/credentials.json:ro
+    working_dir: /app
+    command: >
+      sh -c "
+        echo 'Starting Pydantic AI Agent development environment...' &&
+        python -c 'from agent_engine import PydanticAIAgentWrapper; print(\"Agent module loaded successfully\")' &&
+        echo 'Ready for development. Use docker exec to run commands.'
+      "
+    tty: true
+    stdin_open: true
+
+  # Test runner service
+  test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: pydantic-ai-agent-test
+    env_file:
+      - ../.env
+    environment:
+      - LOG_LEVEL=WARNING
+    volumes:
+      - ../src:/app/src:ro
+      - ../tests:/app/tests:ro
+    working_dir: /app
+    command: pytest tests/ -v --tb=short
+    profiles:
+      - test
+
+  # Linting service
+  lint:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: pydantic-ai-agent-lint
+    volumes:
+      - ../src:/app/src:ro
+      - ../tests:/app/tests:ro
+    working_dir: /app
+    command: >
+      sh -c "
+        echo 'Running ruff check...' &&
+        ruff check src/ tests/ &&
+        echo 'Running ruff format check...' &&
+        ruff format --check src/ tests/ &&
+        echo 'All lint checks passed!'
+      "
+    profiles:
+      - lint
+
+  # Type checking service
+  typecheck:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: pydantic-ai-agent-typecheck
+    volumes:
+      - ../src:/app/src:ro
+      - ../tests:/app/tests:ro
+    working_dir: /app
+    command: mypy src/
+    profiles:
+      - typecheck
+
+# Usage examples:
+#
+# Start development environment:
+#   docker-compose -f docker/docker-compose.yml up agent
+#
+# Run tests:
+#   docker-compose -f docker/docker-compose.yml --profile test up test
+#
+# Run linting:
+#   docker-compose -f docker/docker-compose.yml --profile lint up lint
+#
+# Run type checking:
+#   docker-compose -f docker/docker-compose.yml --profile typecheck up typecheck
+#
+# Run all checks:
+#   docker-compose -f docker/docker-compose.yml --profile test --profile lint --profile typecheck up
+#
+# Execute commands in running container:
+#   docker exec -it pydantic-ai-agent python scripts/deploy.py --help
