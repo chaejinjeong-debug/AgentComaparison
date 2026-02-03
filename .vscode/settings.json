@@ -1,8 +1,0 @@
-{
-    "python-envs.defaultEnvManager": "ms-python.python:system",
-    "python-envs.pythonProjects": [],
-    "python.languageServer": "None",
-    "cursorpyright.shouldImportPylanceSettings": "ask",
-    "cursorpyright.disableLanguageServices": false,
-    "editor.semanticHighlighting.enabled": true
-}
