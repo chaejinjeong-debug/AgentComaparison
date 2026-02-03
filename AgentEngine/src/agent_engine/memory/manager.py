@@ -6,14 +6,20 @@ Implements MB-001~MB-006:
 - MB-003: Similarity search
 - MB-004: Agent explicit memory storage
 - MB-006: Memory deletion (GDPR compliance)
+
+Uses a pluggable backend system for storage:
+- InMemoryBackend: Local development/testing
+- VertexAIBackend: Production with persistent storage
 """
 
-from datetime import datetime
 from typing import Any
 
 import structlog
 
-from agent_engine.config import MemoryConfig
+from agent_engine.config import MemoryBackendType, MemoryConfig
+from agent_engine.memory.backends.base import MemoryBackend
+from agent_engine.memory.backends.in_memory import InMemoryMemoryBackend
+from agent_engine.memory.backends.vertex_ai import VertexAIMemoryBackend
 from agent_engine.memory.models import Memory, MemoryScope
 from agent_engine.memory.retriever import MemoryRetriever
 from agent_engine.sessions.models import EventAuthor, Session
@@ -22,36 +28,69 @@ logger = structlog.get_logger(__name__)
 
 
 class MemoryManager:
-    """Manages user memories with similarity search support.
+    """Manages user memories with pluggable backends.
 
     This manager handles memory storage, retrieval, and automatic
-    fact extraction from conversations.
+    fact extraction from conversations. It delegates storage to
+    a backend implementation.
 
     Attributes:
         config: Memory configuration
         retriever: Memory retriever for similarity search
-        _memories: In-memory storage (for local/testing use)
+        _backend: Storage backend implementation
     """
 
-    def __init__(self, config: MemoryConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: MemoryConfig | None = None,
+        project_id: str | None = None,
+        location: str | None = None,
+    ) -> None:
         """Initialize the memory manager.
 
         Args:
             config: Memory configuration, uses defaults if not provided
+            project_id: GCP project ID (required for VertexAI backend)
+            location: GCP region (required for VertexAI backend)
         """
         self.config = config or MemoryConfig()
+        self._project_id = project_id
+        self._location = location
         self.retriever = MemoryRetriever(
             similarity_threshold=self.config.similarity_threshold
         )
-        self._memories: dict[str, Memory] = {}  # memory_id -> Memory
-        self._user_index: dict[str, set[str]] = {}  # user_id -> set of memory_ids
+        self._backend = self._create_backend()
 
         logger.info(
             "MemoryManager initialized",
+            backend=self.config.backend.value,
             auto_generate=self.config.auto_generate,
             max_per_user=self.config.max_memories_per_user,
             similarity_threshold=self.config.similarity_threshold,
         )
+
+    def _create_backend(self) -> MemoryBackend:
+        """Create the appropriate backend based on configuration."""
+        if self.config.backend == MemoryBackendType.VERTEX_AI:
+            if not self.config.agent_engine_id:
+                raise ValueError(
+                    "agent_engine_id is required for VertexAI backend. "
+                    "Set MEMORY_AGENT_ENGINE_ID environment variable."
+                )
+            if not self._project_id or not self._location:
+                raise ValueError(
+                    "project_id and location are required for VertexAI backend."
+                )
+
+            return VertexAIMemoryBackend(
+                project_id=self._project_id,
+                location=self._location,
+                agent_engine_id=self.config.agent_engine_id,
+                config=self.config,
+            )
+
+        # Default to in-memory backend
+        return InMemoryMemoryBackend(config=self.config)
 
     async def save_memory(
         self,
@@ -77,40 +116,20 @@ class MemoryManager:
         Returns:
             Created Memory
         """
-        # Check user memory limit
-        user_memories = self._user_index.get(user_id, set())
-        if len(user_memories) >= self.config.max_memories_per_user:
-            # Remove oldest accessed memory
-            await self._evict_oldest_memory(user_id)
+        # Generate embedding for similarity search (if using in-memory backend)
+        embedding = None
+        if self.config.backend == MemoryBackendType.IN_MEMORY:
+            embedding = await self.retriever.generate_embedding(fact)
 
-        # Generate embedding for similarity search
-        embedding = await self.retriever.generate_embedding(fact)
-
-        memory = Memory(
+        return await self._backend.save_memory(
             user_id=user_id,
             fact=fact,
-            topics=topics or [],
+            embedding=embedding,
+            topics=topics,
             scope=scope,
             source=source,
-            embedding=embedding,
-            metadata=metadata or {},
+            metadata=metadata,
         )
-
-        self._memories[memory.memory_id] = memory
-
-        if user_id not in self._user_index:
-            self._user_index[user_id] = set()
-        self._user_index[user_id].add(memory.memory_id)
-
-        logger.info(
-            "Memory saved",
-            memory_id=memory.memory_id,
-            user_id=user_id,
-            topics=topics,
-            source=source,
-        )
-
-        return memory
 
     async def retrieve_memories(
         self,
@@ -133,38 +152,40 @@ class MemoryManager:
         Returns:
             List of relevant memories
         """
-        user_memory_ids = self._user_index.get(user_id, set())
-        user_memories = [
-            self._memories[mid]
-            for mid in user_memory_ids
-            if mid in self._memories
-        ]
-
-        if include_global:
-            global_memories = [
-                m for m in self._memories.values()
-                if m.scope == MemoryScope.GLOBAL and m.memory_id not in user_memory_ids
-            ]
-            user_memories.extend(global_memories)
-
-        if not user_memories:
-            return []
-
-        if query:
-            # Use similarity search
-            results = await self.retriever.search(
+        # For VertexAI backend, let it handle similarity search
+        if self.config.backend == MemoryBackendType.VERTEX_AI:
+            memories = await self._backend.retrieve_memories(
+                user_id=user_id,
                 query=query,
-                memories=user_memories,
                 max_results=max_results,
+                include_global=include_global,
             )
-            memories = [r.memory for r in results]
         else:
-            # Return most recently accessed
-            memories = sorted(
-                user_memories,
-                key=lambda m: m.accessed_at,
-                reverse=True,
-            )[:max_results]
+            # For in-memory backend, use retriever for similarity search
+            all_memories = await self._backend.retrieve_memories(
+                user_id=user_id,
+                max_results=max_results * 2,  # Get more for filtering
+                include_global=include_global,
+            )
+
+            if not all_memories:
+                return []
+
+            if query:
+                # Use similarity search
+                results = await self.retriever.search(
+                    query=query,
+                    memories=all_memories,
+                    max_results=max_results,
+                )
+                memories = [r.memory for r in results]
+            else:
+                # Return most recently accessed
+                memories = sorted(
+                    all_memories,
+                    key=lambda m: m.accessed_at,
+                    reverse=True,
+                )[:max_results]
 
         # Mark memories as accessed
         for memory in memories:
@@ -236,19 +257,7 @@ class MemoryManager:
         Returns:
             True if deleted, False if not found
         """
-        if memory_id not in self._memories:
-            return False
-
-        memory = self._memories[memory_id]
-        user_id = memory.user_id
-
-        del self._memories[memory_id]
-
-        if user_id in self._user_index:
-            self._user_index[user_id].discard(memory_id)
-
-        logger.info("Memory deleted", memory_id=memory_id, user_id=user_id)
-        return True
+        return await self._backend.delete_memory(memory_id)
 
     async def delete_user_memories(self, user_id: str) -> int:
         """Delete all memories for a user.
@@ -261,22 +270,7 @@ class MemoryManager:
         Returns:
             Number of memories deleted
         """
-        memory_ids = self._user_index.get(user_id, set()).copy()
-
-        for memory_id in memory_ids:
-            if memory_id in self._memories:
-                del self._memories[memory_id]
-
-        deleted_count = len(memory_ids)
-        self._user_index.pop(user_id, None)
-
-        logger.info(
-            "User memories deleted (GDPR)",
-            user_id=user_id,
-            count=deleted_count,
-        )
-
-        return deleted_count
+        return await self._backend.delete_user_memories(user_id)
 
     async def get_memory(self, memory_id: str) -> Memory | None:
         """Get a specific memory by ID.
@@ -287,7 +281,7 @@ class MemoryManager:
         Returns:
             Memory if found, None otherwise
         """
-        return self._memories.get(memory_id)
+        return await self._backend.get_memory(memory_id)
 
     async def update_memory(
         self,
@@ -307,23 +301,18 @@ class MemoryManager:
         Returns:
             Updated Memory or None if not found
         """
-        memory = self._memories.get(memory_id)
-        if memory is None:
-            return None
+        # Generate new embedding if fact is updated
+        embedding = None
+        if fact is not None and self.config.backend == MemoryBackendType.IN_MEMORY:
+            embedding = await self.retriever.generate_embedding(fact)
 
-        if fact is not None:
-            memory.fact = fact
-            # Regenerate embedding
-            memory.embedding = await self.retriever.generate_embedding(fact)
-
-        if topics is not None:
-            memory.topics = topics
-
-        if metadata is not None:
-            memory.metadata.update(metadata)
-
-        logger.debug("Memory updated", memory_id=memory_id)
-        return memory
+        return await self._backend.update_memory(
+            memory_id=memory_id,
+            fact=fact,
+            embedding=embedding,
+            topics=topics,
+            metadata=metadata,
+        )
 
     async def _extract_facts_from_content(
         self,
@@ -400,55 +389,21 @@ class MemoryManager:
 
         return False
 
-    async def _evict_oldest_memory(self, user_id: str) -> None:
-        """Evict the oldest accessed memory for a user.
-
-        Args:
-            user_id: User identifier
-        """
-        memory_ids = self._user_index.get(user_id, set())
-        if not memory_ids:
-            return
-
-        # Find oldest accessed memory
-        oldest_memory = min(
-            (self._memories[mid] for mid in memory_ids if mid in self._memories),
-            key=lambda m: m.accessed_at,
-            default=None,
-        )
-
-        if oldest_memory:
-            await self.delete_memory(oldest_memory.memory_id)
-            logger.debug(
-                "Evicted oldest memory",
-                user_id=user_id,
-                memory_id=oldest_memory.memory_id,
-            )
-
     def get_user_memory_count(self, user_id: str) -> int:
         """Get the number of memories for a user."""
-        return len(self._user_index.get(user_id, set()))
+        return self._backend.get_user_memory_count(user_id)
 
     def get_stats(self) -> dict[str, Any]:
         """Get memory manager statistics."""
-        total_memories = len(self._memories)
-        total_users = len(self._user_index)
-
-        scope_counts = {
-            "user": 0,
-            "session": 0,
-            "global": 0,
+        stats = self._backend.get_stats()
+        stats["config"] = {
+            "auto_generate": self.config.auto_generate,
+            "max_per_user": self.config.max_memories_per_user,
+            "similarity_threshold": self.config.similarity_threshold,
         }
-        for memory in self._memories.values():
-            scope_counts[memory.scope.value] += 1
+        return stats
 
-        return {
-            "total_memories": total_memories,
-            "total_users": total_users,
-            "scope_distribution": scope_counts,
-            "config": {
-                "auto_generate": self.config.auto_generate,
-                "max_per_user": self.config.max_memories_per_user,
-                "similarity_threshold": self.config.similarity_threshold,
-            },
-        }
+    @property
+    def backend_type(self) -> MemoryBackendType:
+        """Get the current backend type."""
+        return self.config.backend

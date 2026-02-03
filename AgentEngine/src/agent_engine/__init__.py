@@ -3,8 +3,10 @@
 from agent_engine.agent import PydanticAIAgentWrapper
 from agent_engine.config import (
     AgentConfig,
+    MemoryBackendType,
     MemoryConfig,
     ObservabilityConfig,
+    SessionBackendType,
     SessionConfig,
 )
 from agent_engine.exceptions import (
@@ -22,7 +24,9 @@ __all__ = [
     # Configuration
     "AgentConfig",
     "SessionConfig",
+    "SessionBackendType",
     "MemoryConfig",
+    "MemoryBackendType",
     "ObservabilityConfig",
     # Exceptions
     "AgentError",

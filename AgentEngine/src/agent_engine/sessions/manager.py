@@ -6,43 +6,84 @@ Implements SM-001~SM-005:
 - SM-003: History retrieval (ListEvents)
 - SM-004: TTL management (24 hours default)
 - SM-005: Session deletion
+
+Uses a pluggable backend system for storage:
+- InMemoryBackend: Local development/testing
+- VertexAIBackend: Production with persistent storage
 """
 
-from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
 
-from agent_engine.config import SessionConfig
+from agent_engine.config import SessionBackendType, SessionConfig
+from agent_engine.sessions.backends.base import SessionBackend
+from agent_engine.sessions.backends.in_memory import InMemorySessionBackend
+from agent_engine.sessions.backends.vertex_ai import VertexAISessionBackend
 from agent_engine.sessions.models import EventAuthor, Session, SessionEvent
 
 logger = structlog.get_logger(__name__)
 
 
 class SessionManager:
-    """Manages conversation sessions with TTL support.
+    """Manages conversation sessions with pluggable backends.
 
     This manager handles session lifecycle including creation, event recording,
-    history retrieval, and automatic expiration.
+    history retrieval, and automatic expiration. It delegates storage to
+    a backend implementation.
 
     Attributes:
         config: Session configuration
-        _sessions: In-memory session storage (for local/testing use)
+        _backend: Storage backend implementation
     """
 
-    def __init__(self, config: SessionConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: SessionConfig | None = None,
+        project_id: str | None = None,
+        location: str | None = None,
+    ) -> None:
         """Initialize the session manager.
 
         Args:
             config: Session configuration, uses defaults if not provided
+            project_id: GCP project ID (required for VertexAI backend)
+            location: GCP region (required for VertexAI backend)
         """
         self.config = config or SessionConfig()
-        self._sessions: dict[str, Session] = {}
+        self._project_id = project_id
+        self._location = location
+        self._backend = self._create_backend()
+
         logger.info(
             "SessionManager initialized",
+            backend=self.config.backend.value,
             ttl_seconds=self.config.default_ttl_seconds,
             max_events=self.config.max_events_per_session,
         )
+
+    def _create_backend(self) -> SessionBackend:
+        """Create the appropriate backend based on configuration."""
+        if self.config.backend == SessionBackendType.VERTEX_AI:
+            if not self.config.agent_engine_id:
+                raise ValueError(
+                    "agent_engine_id is required for VertexAI backend. "
+                    "Set SESSION_AGENT_ENGINE_ID environment variable."
+                )
+            if not self._project_id or not self._location:
+                raise ValueError(
+                    "project_id and location are required for VertexAI backend."
+                )
+
+            return VertexAISessionBackend(
+                project_id=self._project_id,
+                location=self._location,
+                agent_engine_id=self.config.agent_engine_id,
+                config=self.config,
+            )
+
+        # Default to in-memory backend
+        return InMemorySessionBackend(config=self.config)
 
     async def create_session(
         self,
@@ -63,25 +104,11 @@ class SessionManager:
             Newly created Session
         """
         ttl = ttl_seconds or self.config.default_ttl_seconds
-        expires_at = datetime.utcnow() + timedelta(seconds=ttl)
-
-        session = Session(
-            user_id=user_id,
-            expires_at=expires_at,
-            metadata=metadata or {},
-        )
-
-        self._sessions[session.session_id] = session
-
-        logger.info(
-            "Session created",
-            session_id=session.session_id,
+        return await self._backend.create_session(
             user_id=user_id,
             ttl_seconds=ttl,
-            expires_at=expires_at.isoformat(),
+            metadata=metadata,
         )
-
-        return session
 
     async def get_session(self, session_id: str) -> Session | None:
         """Get a session by ID.
@@ -92,18 +119,7 @@ class SessionManager:
         Returns:
             Session if found and not expired, None otherwise
         """
-        session = self._sessions.get(session_id)
-
-        if session is None:
-            logger.debug("Session not found", session_id=session_id)
-            return None
-
-        if session.is_expired:
-            logger.info("Session expired, removing", session_id=session_id)
-            await self.delete_session(session_id)
-            return None
-
-        return session
+        return await self._backend.get_session(session_id)
 
     async def append_event(
         self,
@@ -125,39 +141,12 @@ class SessionManager:
         Returns:
             Created SessionEvent or None if session not found
         """
-        session = await self.get_session(session_id)
-
-        if session is None:
-            logger.warning("Cannot append event: session not found", session_id=session_id)
-            return None
-
-        # Check max events limit
-        if session.event_count >= self.config.max_events_per_session:
-            logger.warning(
-                "Session event limit reached",
-                session_id=session_id,
-                limit=self.config.max_events_per_session,
-            )
-            # Remove oldest event to make room
-            session.events.pop(0)
-
-        event = SessionEvent(
+        return await self._backend.append_event(
+            session_id=session_id,
             author=author,
             content=content,
-            metadata=metadata or {},
+            metadata=metadata,
         )
-
-        session.events.append(event)
-        session.updated_at = datetime.utcnow()
-
-        logger.debug(
-            "Event appended",
-            session_id=session_id,
-            event_id=event.event_id,
-            author=author.value,
-        )
-
-        return event
 
     async def list_events(
         self,
@@ -177,25 +166,11 @@ class SessionManager:
         Returns:
             List of SessionEvents
         """
-        session = await self.get_session(session_id)
-
-        if session is None:
-            logger.debug("Cannot list events: session not found", session_id=session_id)
-            return []
-
-        events = session.events[offset:]
-
-        if limit is not None:
-            events = events[:limit]
-
-        logger.debug(
-            "Events listed",
+        return await self._backend.list_events(
             session_id=session_id,
-            total_events=session.event_count,
-            returned_events=len(events),
+            limit=limit,
+            offset=offset,
         )
-
-        return events
 
     async def delete_session(self, session_id: str) -> bool:
         """Delete a session.
@@ -208,13 +183,7 @@ class SessionManager:
         Returns:
             True if session was deleted, False if not found
         """
-        if session_id not in self._sessions:
-            logger.debug("Cannot delete: session not found", session_id=session_id)
-            return False
-
-        del self._sessions[session_id]
-        logger.info("Session deleted", session_id=session_id)
-        return True
+        return await self._backend.delete_session(session_id)
 
     async def cleanup_expired_sessions(self) -> int:
         """Remove all expired sessions.
@@ -224,17 +193,7 @@ class SessionManager:
         Returns:
             Number of sessions removed
         """
-        expired_ids = [
-            sid for sid, session in self._sessions.items() if session.is_expired
-        ]
-
-        for session_id in expired_ids:
-            del self._sessions[session_id]
-
-        if expired_ids:
-            logger.info("Expired sessions cleaned up", count=len(expired_ids))
-
-        return len(expired_ids)
+        return await self._backend.cleanup_expired_sessions()
 
     async def get_user_sessions(
         self,
@@ -250,22 +209,10 @@ class SessionManager:
         Returns:
             List of user's sessions
         """
-        sessions = [
-            session
-            for session in self._sessions.values()
-            if session.user_id == user_id
-        ]
-
-        if not include_expired:
-            sessions = [s for s in sessions if not s.is_expired]
-
-        logger.debug(
-            "User sessions retrieved",
+        return await self._backend.get_user_sessions(
             user_id=user_id,
-            count=len(sessions),
+            include_expired=include_expired,
         )
-
-        return sessions
 
     async def extend_session(
         self,
@@ -281,39 +228,21 @@ class SessionManager:
         Returns:
             Updated Session or None if not found
         """
-        session = await self.get_session(session_id)
-
-        if session is None:
-            return None
-
         extension = additional_seconds or self.config.default_ttl_seconds
-        session.expires_at = datetime.utcnow() + timedelta(seconds=extension)
-        session.updated_at = datetime.utcnow()
-
-        logger.info(
-            "Session extended",
+        return await self._backend.extend_session(
             session_id=session_id,
-            new_expires_at=session.expires_at.isoformat(),
+            additional_seconds=extension,
         )
-
-        return session
 
     def get_session_count(self) -> int:
         """Get the total number of active sessions."""
-        return len(self._sessions)
+        return self._backend.get_session_count()
 
     def get_stats(self) -> dict[str, Any]:
         """Get session manager statistics."""
-        total_events = sum(s.event_count for s in self._sessions.values())
-        expired_count = sum(1 for s in self._sessions.values() if s.is_expired)
+        return self._backend.get_stats()
 
-        return {
-            "total_sessions": len(self._sessions),
-            "active_sessions": len(self._sessions) - expired_count,
-            "expired_sessions": expired_count,
-            "total_events": total_events,
-            "config": {
-                "default_ttl_seconds": self.config.default_ttl_seconds,
-                "max_events_per_session": self.config.max_events_per_session,
-            },
-        }
+    @property
+    def backend_type(self) -> SessionBackendType:
+        """Get the current backend type."""
+        return self.config.backend

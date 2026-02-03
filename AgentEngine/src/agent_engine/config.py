@@ -1,11 +1,26 @@
 """Configuration management for the Agent Engine platform."""
 
 import os
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
+
+
+class SessionBackendType(str, Enum):
+    """Session storage backend type."""
+
+    IN_MEMORY = "in_memory"  # Local development/testing
+    VERTEX_AI = "vertex_ai"  # Production with VertexAI Sessions API
+
+
+class MemoryBackendType(str, Enum):
+    """Memory storage backend type."""
+
+    IN_MEMORY = "in_memory"  # Local development/testing
+    VERTEX_AI = "vertex_ai"  # Production with VertexAI Memory Bank API
 
 
 class SessionConfig(BaseModel):
@@ -15,6 +30,8 @@ class SessionConfig(BaseModel):
         enabled: Whether session management is enabled
         default_ttl_seconds: Default session TTL in seconds (default: 24 hours)
         max_events_per_session: Maximum events to store per session
+        backend: Storage backend type (in_memory or vertex_ai)
+        agent_engine_id: Agent Engine ID (required for vertex_ai backend)
     """
 
     enabled: bool = Field(default=True, description="Enable session management")
@@ -23,6 +40,14 @@ class SessionConfig(BaseModel):
     )
     max_events_per_session: int = Field(
         default=1000, ge=10, description="Max events per session"
+    )
+    backend: SessionBackendType = Field(
+        default=SessionBackendType.IN_MEMORY,
+        description="Storage backend (in_memory for local, vertex_ai for production)",
+    )
+    agent_engine_id: str | None = Field(
+        default=None,
+        description="Agent Engine ID (required for vertex_ai backend)",
     )
 
 
@@ -34,6 +59,8 @@ class MemoryConfig(BaseModel):
         auto_generate: Automatically extract memories from conversations
         max_memories_per_user: Maximum memories to store per user
         similarity_threshold: Minimum similarity score for memory retrieval
+        backend: Storage backend type (in_memory or vertex_ai)
+        agent_engine_id: Agent Engine ID (required for vertex_ai backend)
     """
 
     enabled: bool = Field(default=True, description="Enable memory bank")
@@ -43,6 +70,14 @@ class MemoryConfig(BaseModel):
     )
     similarity_threshold: float = Field(
         default=0.7, ge=0.0, le=1.0, description="Similarity threshold for retrieval"
+    )
+    backend: MemoryBackendType = Field(
+        default=MemoryBackendType.IN_MEMORY,
+        description="Storage backend (in_memory for local, vertex_ai for production)",
+    )
+    agent_engine_id: str | None = Field(
+        default=None,
+        description="Agent Engine ID (required for vertex_ai backend)",
     )
 
 
@@ -145,18 +180,34 @@ class AgentConfig(BaseModel):
             system_prompt = Path(system_prompt_file).read_text(encoding="utf-8").strip()
 
         # Session configuration
+        session_backend_str = os.getenv("SESSION_BACKEND", "in_memory").lower()
+        session_backend = (
+            SessionBackendType.VERTEX_AI
+            if session_backend_str == "vertex_ai"
+            else SessionBackendType.IN_MEMORY
+        )
         session_config = SessionConfig(
             enabled=os.getenv("SESSION_ENABLED", "true").lower() == "true",
             default_ttl_seconds=int(os.getenv("SESSION_TTL_SECONDS", "86400")),
             max_events_per_session=int(os.getenv("SESSION_MAX_EVENTS", "1000")),
+            backend=session_backend,
+            agent_engine_id=os.getenv("SESSION_AGENT_ENGINE_ID"),
         )
 
         # Memory configuration
+        memory_backend_str = os.getenv("MEMORY_BACKEND", "in_memory").lower()
+        memory_backend = (
+            MemoryBackendType.VERTEX_AI
+            if memory_backend_str == "vertex_ai"
+            else MemoryBackendType.IN_MEMORY
+        )
         memory_config = MemoryConfig(
             enabled=os.getenv("MEMORY_ENABLED", "true").lower() == "true",
             auto_generate=os.getenv("MEMORY_AUTO_GENERATE", "true").lower() == "true",
             max_memories_per_user=int(os.getenv("MEMORY_MAX_PER_USER", "1000")),
             similarity_threshold=float(os.getenv("MEMORY_SIMILARITY_THRESHOLD", "0.7")),
+            backend=memory_backend,
+            agent_engine_id=os.getenv("MEMORY_AGENT_ENGINE_ID"),
         )
 
         # Observability configuration

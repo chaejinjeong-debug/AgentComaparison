@@ -73,6 +73,24 @@
 
 ---
 
+## Phase 2.5: Backend Abstraction ✅
+
+### Session/Memory 영속성 리팩토링
+- [x] Strategy Pattern 적용하여 Backend 추상화
+- [x] SessionBackend ABC 및 구현체 (InMemory, VertexAI)
+- [x] MemoryBackend ABC 및 구현체 (InMemory, VertexAI)
+- [x] Config에 SessionBackendType, MemoryBackendType enum 추가
+- [x] 기존 테스트 128개 통과 확인
+
+**변경 파일:**
+- `config.py`: Backend 타입 enum 추가
+- `sessions/backends/`: 신규 디렉토리 (base.py, in_memory.py, vertex_ai.py)
+- `sessions/manager.py`: Backend 위임 패턴 적용
+- `memory/backends/`: 신규 디렉토리 (base.py, in_memory.py, vertex_ai.py)
+- `memory/manager.py`: Backend 위임 패턴 적용
+
+---
+
 ## Phase 2 구현 상세
 
 ### 신규 모듈
@@ -80,13 +98,23 @@
 src/agent_engine/
 ├── sessions/                 # Session Management (SM-001~005)
 │   ├── __init__.py
-│   ├── manager.py           # SessionManager
-│   └── models.py            # Session, SessionEvent models
+│   ├── manager.py           # SessionManager (Backend 위임)
+│   ├── models.py            # Session, SessionEvent models
+│   └── backends/            # Storage Backends
+│       ├── __init__.py
+│       ├── base.py          # SessionBackend ABC
+│       ├── in_memory.py     # InMemorySessionBackend
+│       └── vertex_ai.py     # VertexAISessionBackend
 ├── memory/                   # Memory Bank (MB-001~006)
 │   ├── __init__.py
-│   ├── manager.py           # MemoryManager
+│   ├── manager.py           # MemoryManager (Backend 위임)
 │   ├── retriever.py         # Similarity Search
-│   └── models.py            # Memory, MemoryScope models
+│   ├── models.py            # Memory, MemoryScope models
+│   └── backends/            # Storage Backends
+│       ├── __init__.py
+│       ├── base.py          # MemoryBackend ABC
+│       ├── in_memory.py     # InMemoryMemoryBackend
+│       └── vertex_ai.py     # VertexAIMemoryBackend
 ├── observability/            # Observability (OB-001~003, TS-004)
 │   ├── __init__.py
 │   ├── tracing.py           # Cloud Trace
