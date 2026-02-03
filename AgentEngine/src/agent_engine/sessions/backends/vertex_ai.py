@@ -1,9 +1,12 @@
-"""VertexAI session storage backend for production use."""
+"""VertexAI session storage backend using REST API for production use."""
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+import google.auth
+import google.auth.transport.requests
+import httpx
 import structlog
 
 from agent_engine.config import SessionConfig
@@ -14,9 +17,9 @@ logger = structlog.get_logger(__name__)
 
 
 class VertexAISessionBackend(SessionBackend):
-    """VertexAI Agent Engine session storage backend.
+    """VertexAI Agent Engine session storage backend using REST API.
 
-    This backend uses VertexAI's managed Sessions API for:
+    This backend uses VertexAI's managed Sessions REST API for:
     - Persistent session storage
     - Automatic replication and backup
     - Multi-instance support
@@ -44,11 +47,18 @@ class VertexAISessionBackend(SessionBackend):
         self.location = location
         self.agent_engine_id = agent_engine_id
         self.config = config or SessionConfig()
-        self._client = None
-        self._agent_engine_name = (
+
+        # REST API configuration
+        self._base_url = f"https://{location}-aiplatform.googleapis.com/v1"
+        self._reasoning_engine = (
             f"projects/{project_id}/locations/{location}"
             f"/reasoningEngines/{agent_engine_id}"
         )
+        self._credentials = None
+        self._token_expiry = None
+
+        # Local cache for session metadata
+        self._session_cache: dict[str, Session] = {}
 
         logger.info(
             "VertexAISessionBackend initialized",
@@ -57,21 +67,26 @@ class VertexAISessionBackend(SessionBackend):
             agent_engine_id=agent_engine_id,
         )
 
-    def _get_client(self):
-        """Get or create VertexAI client."""
-        if self._client is None:
-            try:
-                import vertexai
-                from google.cloud import aiplatform
+    def _get_access_token(self) -> str:
+        """Get or refresh Google Cloud access token."""
+        now = datetime.now(timezone.utc)
 
-                vertexai.init(project=self.project_id, location=self.location)
-                self._client = aiplatform.gapic.ReasoningEngineServiceClient()
-            except ImportError as e:
-                raise ImportError(
-                    "google-cloud-aiplatform >= 1.114.0 required for VertexAI backend. "
-                    "Install with: pip install 'google-cloud-aiplatform>=1.114.0'"
-                ) from e
-        return self._client
+        if self._credentials is None or self._token_expiry is None or now >= self._token_expiry:
+            self._credentials, _ = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            )
+            self._credentials.refresh(google.auth.transport.requests.Request())
+            # Set expiry 5 minutes before actual expiry
+            self._token_expiry = now + timedelta(minutes=55)
+
+        return self._credentials.token
+
+    def _get_headers(self) -> dict[str, str]:
+        """Get HTTP headers with authentication."""
+        return {
+            "Authorization": f"Bearer {self._get_access_token()}",
+            "Content-Type": "application/json",
+        }
 
     async def create_session(
         self,
@@ -79,94 +94,102 @@ class VertexAISessionBackend(SessionBackend):
         ttl_seconds: int,
         metadata: dict[str, Any] | None = None,
     ) -> Session:
-        """Create a new session using VertexAI Sessions API."""
+        """Create a new session using VertexAI Sessions REST API."""
+        url = f"{self._base_url}/{self._reasoning_engine}/sessions"
+
+        request_body = {
+            "userId": user_id,
+        }
+
         try:
-            client = self._get_client()
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    url,
+                    headers=self._get_headers(),
+                    json=request_body,
+                )
 
-            # Call VertexAI Sessions API
-            # Note: Actual API structure may vary based on SDK version
-            request = {
-                "parent": self._agent_engine_name,
-                "session": {
-                    "user_id": user_id,
-                    "expire_time": {
-                        "seconds": int(
-                            (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).timestamp()
-                        )
-                    },
-                },
-            }
+                if response.status_code in [200, 201]:
+                    data = response.json()
+                    # Extract session ID from operation name
+                    # Format: projects/.../sessions/{session_id}/operations/{op_id}
+                    name = data.get("name", "")
+                    parts = name.split("/")
+                    session_id = ""
+                    for i, part in enumerate(parts):
+                        if part == "sessions" and i + 1 < len(parts):
+                            session_id = parts[i + 1]
+                            break
 
-            # Create session via gRPC
-            response = client.create_session(request=request)
+                    if not session_id:
+                        session_id = str(uuid4())
 
-            # Convert to internal Session model
-            session = Session(
-                session_id=response.name.split("/")[-1] if hasattr(response, "name") else str(uuid4()),
-                user_id=user_id,
-                expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
-                metadata=metadata or {},
-            )
+                    session = Session(
+                        session_id=session_id,
+                        user_id=user_id,
+                        expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+                        metadata=metadata or {},
+                    )
 
-            logger.info(
-                "VertexAI session created",
-                session_id=session.session_id,
-                user_id=user_id,
-                ttl_seconds=ttl_seconds,
-            )
+                    # Cache locally
+                    self._session_cache[session_id] = session
 
-            return session
+                    logger.info(
+                        "VertexAI session created",
+                        session_id=session_id,
+                        user_id=user_id,
+                    )
 
-        except Exception as e:
-            logger.error("Failed to create VertexAI session", error=str(e))
-            # Fallback to local session creation for development
-            return await self._create_local_session(user_id, ttl_seconds, metadata)
+                    return session
+                else:
+                    logger.error(
+                        "Failed to create VertexAI session",
+                        status=response.status_code,
+                        error=response.text[:200],
+                    )
+                    raise RuntimeError(f"Failed to create session: {response.text[:200]}")
 
-    async def _create_local_session(
-        self,
-        user_id: str,
-        ttl_seconds: int,
-        metadata: dict[str, Any] | None = None,
-    ) -> Session:
-        """Create a local session as fallback."""
-        logger.warning("Using local session fallback")
-        expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
-        return Session(
-            user_id=user_id,
-            expires_at=expires_at,
-            metadata=metadata or {},
-        )
+        except httpx.HTTPError as e:
+            logger.error("HTTP error creating VertexAI session", error=str(e))
+            raise
 
     async def get_session(self, session_id: str) -> Session | None:
         """Get a session from VertexAI."""
+        # Check local cache first
+        if session_id in self._session_cache:
+            session = self._session_cache[session_id]
+            if not session.is_expired:
+                return session
+            else:
+                del self._session_cache[session_id]
+
+        url = f"{self._base_url}/{self._reasoning_engine}/sessions/{session_id}"
+
         try:
-            client = self._get_client()
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=self._get_headers())
 
-            session_name = f"{self._agent_engine_name}/sessions/{session_id}"
-            response = client.get_session(name=session_name)
+                if response.status_code == 200:
+                    data = response.json()
+                    session = Session(
+                        session_id=session_id,
+                        user_id=data.get("userId", "unknown"),
+                        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+                    )
+                    self._session_cache[session_id] = session
+                    return session
+                elif response.status_code == 404:
+                    return None
+                else:
+                    logger.error(
+                        "Failed to get VertexAI session",
+                        session_id=session_id,
+                        status=response.status_code,
+                    )
+                    return None
 
-            if response is None:
-                return None
-
-            # Convert to internal Session model
-            session = Session(
-                session_id=session_id,
-                user_id=getattr(response, "user_id", "unknown"),
-                expires_at=datetime.fromtimestamp(
-                    response.expire_time.seconds, tz=timezone.utc
-                )
-                if hasattr(response, "expire_time")
-                else datetime.now(timezone.utc) + timedelta(hours=24),
-            )
-
-            if session.is_expired:
-                logger.info("Session expired", session_id=session_id)
-                return None
-
-            return session
-
-        except Exception as e:
-            logger.error("Failed to get VertexAI session", session_id=session_id, error=str(e))
+        except httpx.HTTPError as e:
+            logger.error("HTTP error getting VertexAI session", error=str(e))
             return None
 
     async def append_event(
@@ -177,51 +200,59 @@ class VertexAISessionBackend(SessionBackend):
         metadata: dict[str, Any] | None = None,
     ) -> SessionEvent | None:
         """Append an event to a VertexAI session."""
-        try:
-            client = self._get_client()
+        url = f"{self._base_url}/{self._reasoning_engine}/sessions/{session_id}:appendEvent"
 
-            session_name = f"{self._agent_engine_name}/sessions/{session_id}"
+        # Prepare event content
+        text_content = content.get("text", str(content))
 
-            # Prepare event content
-            event_content = {
-                "role": author.value,
-                "parts": [{"text": content.get("text", str(content))}],
-            }
-
-            request = {
-                "name": session_name,
-                "event": {
-                    "author": author.value,
-                    "invocation_id": str(uuid4()),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "content": event_content,
+        request_body = {
+            "event": {
+                "author": author.value,
+                "invocationId": str(uuid4()),
+                "content": {
+                    "role": author.value,
+                    "parts": [{"text": text_content}],
                 },
-            }
+            },
+        }
 
-            client.append_event(request=request)
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    url,
+                    headers=self._get_headers(),
+                    json=request_body,
+                )
 
-            # Create internal event model
-            event = SessionEvent(
-                author=author,
-                content=content,
-                metadata=metadata or {},
-            )
+                if response.status_code in [200, 201]:
+                    event = SessionEvent(
+                        author=author,
+                        content=content,
+                        metadata=metadata or {},
+                    )
 
-            logger.debug(
-                "Event appended to VertexAI session",
-                session_id=session_id,
-                event_id=event.event_id,
-                author=author.value,
-            )
+                    # Update local cache
+                    if session_id in self._session_cache:
+                        self._session_cache[session_id].events.append(event)
+                        self._session_cache[session_id].updated_at = datetime.utcnow()
 
-            return event
+                    logger.debug(
+                        "Event appended to VertexAI session",
+                        session_id=session_id,
+                        event_id=event.event_id,
+                    )
+                    return event
+                else:
+                    logger.error(
+                        "Failed to append event",
+                        session_id=session_id,
+                        status=response.status_code,
+                        error=response.text[:200],
+                    )
+                    return None
 
-        except Exception as e:
-            logger.error(
-                "Failed to append event to VertexAI session",
-                session_id=session_id,
-                error=str(e),
-            )
+        except httpx.HTTPError as e:
+            logger.error("HTTP error appending event", error=str(e))
             return None
 
     async def list_events(
@@ -231,77 +262,98 @@ class VertexAISessionBackend(SessionBackend):
         offset: int = 0,
     ) -> list[SessionEvent]:
         """List events from a VertexAI session."""
+        url = f"{self._base_url}/{self._reasoning_engine}/sessions/{session_id}:listEvents"
+
         try:
-            client = self._get_client()
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=self._get_headers())
 
-            session_name = f"{self._agent_engine_name}/sessions/{session_id}"
+                if response.status_code == 200:
+                    data = response.json()
+                    events = []
 
-            # List events from VertexAI
-            response = client.list_events(name=session_name)
+                    for event_data in data.get("sessionEvents", []):
+                        author_str = event_data.get("author", "user")
+                        try:
+                            author = EventAuthor(author_str)
+                        except ValueError:
+                            author = EventAuthor.USER
 
-            events = []
-            for i, event_data in enumerate(response):
-                if i < offset:
-                    continue
-                if limit and len(events) >= limit:
-                    break
+                        content_data = event_data.get("content", {})
+                        parts = content_data.get("parts", [])
+                        text = parts[0].get("text", "") if parts else ""
 
-                # Convert to internal event model
-                author_str = getattr(event_data, "author", "user")
-                try:
-                    author = EventAuthor(author_str)
-                except ValueError:
-                    author = EventAuthor.USER
+                        event = SessionEvent(
+                            author=author,
+                            content={"text": text},
+                        )
+                        events.append(event)
 
-                event = SessionEvent(
-                    author=author,
-                    content={"text": str(getattr(event_data, "content", {}))},
-                )
-                events.append(event)
+                    # Apply offset and limit
+                    events = events[offset:]
+                    if limit:
+                        events = events[:limit]
 
-            logger.debug(
-                "Events listed from VertexAI session",
-                session_id=session_id,
-                returned_events=len(events),
-            )
+                    logger.debug(
+                        "Events listed from VertexAI session",
+                        session_id=session_id,
+                        count=len(events),
+                    )
+                    return events
+                else:
+                    logger.error(
+                        "Failed to list events",
+                        session_id=session_id,
+                        status=response.status_code,
+                    )
+                    return []
 
-            return events
-
-        except Exception as e:
-            logger.error(
-                "Failed to list events from VertexAI session",
-                session_id=session_id,
-                error=str(e),
-            )
+        except httpx.HTTPError as e:
+            logger.error("HTTP error listing events", error=str(e))
             return []
 
     async def delete_session(self, session_id: str) -> bool:
         """Delete a session from VertexAI."""
+        url = f"{self._base_url}/{self._reasoning_engine}/sessions/{session_id}"
+
         try:
-            client = self._get_client()
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.delete(url, headers=self._get_headers())
 
-            session_name = f"{self._agent_engine_name}/sessions/{session_id}"
-            client.delete_session(name=session_name)
+                if response.status_code in [200, 204]:
+                    self._session_cache.pop(session_id, None)
+                    logger.info("VertexAI session deleted", session_id=session_id)
+                    return True
+                else:
+                    logger.error(
+                        "Failed to delete session",
+                        session_id=session_id,
+                        status=response.status_code,
+                    )
+                    return False
 
-            logger.info("VertexAI session deleted", session_id=session_id)
-            return True
-
-        except Exception as e:
-            logger.error(
-                "Failed to delete VertexAI session",
-                session_id=session_id,
-                error=str(e),
-            )
+        except httpx.HTTPError as e:
+            logger.error("HTTP error deleting session", error=str(e))
             return False
 
     async def cleanup_expired_sessions(self) -> int:
         """Clean up expired sessions.
 
         Note: VertexAI automatically handles session expiration.
-        This method is a no-op for the VertexAI backend.
+        This cleans up the local cache only.
         """
-        logger.debug("VertexAI handles session expiration automatically")
-        return 0
+        expired_ids = [
+            sid for sid, session in self._session_cache.items()
+            if session.is_expired
+        ]
+
+        for session_id in expired_ids:
+            del self._session_cache[session_id]
+
+        if expired_ids:
+            logger.info("Expired sessions cleaned from cache", count=len(expired_ids))
+
+        return len(expired_ids)
 
     async def get_user_sessions(
         self,
@@ -309,46 +361,46 @@ class VertexAISessionBackend(SessionBackend):
         include_expired: bool = False,
     ) -> list[Session]:
         """Get all sessions for a user from VertexAI."""
+        url = f"{self._base_url}/{self._reasoning_engine}/sessions"
+
         try:
-            client = self._get_client()
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=self._get_headers())
 
-            # List sessions filtered by user_id
-            request = {
-                "parent": self._agent_engine_name,
-                "filter": f'user_id="{user_id}"',
-            }
+                if response.status_code == 200:
+                    data = response.json()
+                    sessions = []
 
-            response = client.list_sessions(request=request)
+                    for session_data in data.get("sessions", []):
+                        if session_data.get("userId") == user_id:
+                            name = session_data.get("name", "")
+                            session_id = name.split("/")[-1] if "/" in name else name
 
-            sessions = []
-            for session_data in response:
-                session = Session(
-                    session_id=session_data.name.split("/")[-1],
-                    user_id=user_id,
-                    expires_at=datetime.fromtimestamp(
-                        session_data.expire_time.seconds, tz=timezone.utc
+                            session = Session(
+                                session_id=session_id,
+                                user_id=user_id,
+                                expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+                            )
+
+                            if include_expired or not session.is_expired:
+                                sessions.append(session)
+
+                    logger.debug(
+                        "User sessions retrieved from VertexAI",
+                        user_id=user_id,
+                        count=len(sessions),
                     )
-                    if hasattr(session_data, "expire_time")
-                    else datetime.now(timezone.utc) + timedelta(hours=24),
-                )
+                    return sessions
+                else:
+                    logger.error(
+                        "Failed to get user sessions",
+                        user_id=user_id,
+                        status=response.status_code,
+                    )
+                    return []
 
-                if include_expired or not session.is_expired:
-                    sessions.append(session)
-
-            logger.debug(
-                "User sessions retrieved from VertexAI",
-                user_id=user_id,
-                count=len(sessions),
-            )
-
-            return sessions
-
-        except Exception as e:
-            logger.error(
-                "Failed to get user sessions from VertexAI",
-                user_id=user_id,
-                error=str(e),
-            )
+        except httpx.HTTPError as e:
+            logger.error("HTTP error getting user sessions", error=str(e))
             return []
 
     async def extend_session(
@@ -356,63 +408,27 @@ class VertexAISessionBackend(SessionBackend):
         session_id: str,
         additional_seconds: int,
     ) -> Session | None:
-        """Extend a session's TTL in VertexAI."""
-        try:
-            client = self._get_client()
+        """Extend a session's TTL.
 
-            session_name = f"{self._agent_engine_name}/sessions/{session_id}"
-            new_expire_time = datetime.now(timezone.utc) + timedelta(seconds=additional_seconds)
-
-            request = {
-                "session": {
-                    "name": session_name,
-                    "expire_time": {"seconds": int(new_expire_time.timestamp())},
-                },
-                "update_mask": {"paths": ["expire_time"]},
-            }
-
-            response = client.update_session(request=request)
-
-            session = Session(
-                session_id=session_id,
-                user_id=getattr(response, "user_id", "unknown"),
-                expires_at=new_expire_time,
-            )
-
+        Note: VertexAI may not support direct TTL extension.
+        This updates the local cache only.
+        """
+        session = await self.get_session(session_id)
+        if session:
+            session.expires_at = datetime.now(timezone.utc) + timedelta(seconds=additional_seconds)
+            session.updated_at = datetime.utcnow()
+            self._session_cache[session_id] = session
             logger.info(
-                "VertexAI session extended",
+                "Session TTL extended in cache",
                 session_id=session_id,
-                new_expires_at=new_expire_time.isoformat(),
+                expires_at=session.expires_at.isoformat(),
             )
-
             return session
-
-        except Exception as e:
-            logger.error(
-                "Failed to extend VertexAI session",
-                session_id=session_id,
-                error=str(e),
-            )
-            return None
+        return None
 
     def get_session_count(self) -> int:
-        """Get the total number of active sessions.
-
-        Note: This requires listing all sessions which may be expensive.
-        Consider caching or using metrics instead.
-        """
-        try:
-            client = self._get_client()
-
-            request = {"parent": self._agent_engine_name}
-            response = client.list_sessions(request=request)
-
-            count = sum(1 for _ in response)
-            return count
-
-        except Exception as e:
-            logger.error("Failed to count VertexAI sessions", error=str(e))
-            return 0
+        """Get the total number of cached sessions."""
+        return len(self._session_cache)
 
     def get_stats(self) -> dict[str, Any]:
         """Get backend statistics."""
@@ -421,6 +437,7 @@ class VertexAISessionBackend(SessionBackend):
             "project_id": self.project_id,
             "location": self.location,
             "agent_engine_id": self.agent_engine_id,
+            "cached_sessions": len(self._session_cache),
             "config": {
                 "default_ttl_seconds": self.config.default_ttl_seconds,
                 "max_events_per_session": self.config.max_events_per_session,
