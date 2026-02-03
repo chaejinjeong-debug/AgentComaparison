@@ -1,0 +1,332 @@
+# Cloud Monitoring Dashboard for Agent Engine
+# OB-004: Monitoring Dashboard Configuration
+#
+# Deploy with:
+#   gcloud monitoring dashboards create --config-from-file=monitoring/dashboard.yaml
+#
+# Metrics tracked:
+# - Request Rate
+# - Error Rate
+# - Latency (P50/P99)
+# - Token Usage
+# - Active Sessions
+# - Memory Count
+
+displayName: Agent Engine Dashboard
+
+mosaicLayout:
+  columns: 12
+  tiles:
+    # Row 1: Overview Metrics
+    - width: 4
+      height: 4
+      widget:
+        title: Request Rate
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.requests"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+                    groupByFields:
+                      - metric.label.method
+              plotType: LINE
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Requests/sec
+            scale: LINEAR
+
+    - xPos: 4
+      width: 4
+      height: 4
+      widget:
+        title: Error Rate
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.errors"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+                    groupByFields:
+                      - metric.label.error_type
+              plotType: LINE
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Errors/sec
+            scale: LINEAR
+          thresholds:
+            - value: 1.0
+              color: RED
+              direction: ABOVE
+
+    - xPos: 8
+      width: 4
+      height: 4
+      widget:
+        title: Success Rate
+        scorecard:
+          timeSeriesQuery:
+            timeSeriesFilterRatio:
+              numerator:
+                filter: metric.type="custom.googleapis.com/agent_engine.requests" metric.label.status="success"
+                aggregation:
+                  alignmentPeriod: "300s"
+                  perSeriesAligner: ALIGN_SUM
+              denominator:
+                filter: metric.type="custom.googleapis.com/agent_engine.requests"
+                aggregation:
+                  alignmentPeriod: "300s"
+                  perSeriesAligner: ALIGN_SUM
+          thresholds:
+            - value: 0.99
+              color: GREEN
+              direction: ABOVE
+            - value: 0.95
+              color: YELLOW
+              direction: ABOVE
+            - value: 0
+              color: RED
+              direction: ABOVE
+
+    # Row 2: Latency
+    - yPos: 4
+      width: 6
+      height: 4
+      widget:
+        title: Latency Distribution (P50, P95, P99)
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.latency"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_PERCENTILE_50
+                    crossSeriesReducer: REDUCE_MEAN
+              legendTemplate: P50
+              plotType: LINE
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.latency"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_PERCENTILE_95
+                    crossSeriesReducer: REDUCE_MEAN
+              legendTemplate: P95
+              plotType: LINE
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.latency"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_PERCENTILE_99
+                    crossSeriesReducer: REDUCE_MEAN
+              legendTemplate: P99
+              plotType: LINE
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Latency (ms)
+            scale: LINEAR
+
+    - xPos: 6
+      yPos: 4
+      width: 6
+      height: 4
+      widget:
+        title: Latency Heatmap
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.latency"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_DELTA
+              plotType: HEATMAP
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Latency (ms)
+            scale: LINEAR
+
+    # Row 3: Token Usage
+    - yPos: 8
+      width: 6
+      height: 4
+      widget:
+        title: Token Usage (Input vs Output)
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.tokens" metric.label.type="input"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+              legendTemplate: Input Tokens
+              plotType: STACKED_AREA
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.tokens" metric.label.type="output"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+              legendTemplate: Output Tokens
+              plotType: STACKED_AREA
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Tokens/sec
+            scale: LINEAR
+
+    - xPos: 6
+      yPos: 8
+      width: 6
+      height: 4
+      widget:
+        title: Total Token Cost Estimation
+        scorecard:
+          timeSeriesQuery:
+            timeSeriesFilter:
+              filter: metric.type="custom.googleapis.com/agent_engine.tokens"
+              aggregation:
+                alignmentPeriod: "86400s"  # 24 hours
+                perSeriesAligner: ALIGN_SUM
+                crossSeriesReducer: REDUCE_SUM
+          sparkChartView:
+            sparkChartType: SPARK_LINE
+
+    # Row 4: Sessions & Memory
+    - yPos: 12
+      width: 4
+      height: 4
+      widget:
+        title: Active Sessions
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.active_sessions"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_MEAN
+                    crossSeriesReducer: REDUCE_SUM
+              plotType: LINE
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Sessions
+            scale: LINEAR
+
+    - xPos: 4
+      yPos: 12
+      width: 4
+      height: 4
+      widget:
+        title: Memory Count
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.memory_count"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_MEAN
+                    crossSeriesReducer: REDUCE_SUM
+              plotType: LINE
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Memories
+            scale: LINEAR
+
+    - xPos: 8
+      yPos: 12
+      width: 4
+      height: 4
+      widget:
+        title: Resource Health
+        scorecard:
+          timeSeriesQuery:
+            timeSeriesFilter:
+              filter: resource.type="aiplatform.googleapis.com/ReasoningEngine"
+              aggregation:
+                alignmentPeriod: "60s"
+                perSeriesAligner: ALIGN_MEAN
+          thresholds:
+            - value: 1
+              color: GREEN
+              direction: ABOVE
+
+    # Row 5: Error Breakdown
+    - yPos: 16
+      width: 6
+      height: 4
+      widget:
+        title: Errors by Type
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.errors"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+                    groupByFields:
+                      - metric.label.error_type
+              plotType: STACKED_BAR
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Errors/sec
+            scale: LINEAR
+
+    - xPos: 6
+      yPos: 16
+      width: 6
+      height: 4
+      widget:
+        title: Requests by Method
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: metric.type="custom.googleapis.com/agent_engine.requests"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+                    groupByFields:
+                      - metric.label.method
+              plotType: STACKED_BAR
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Requests/sec
+            scale: LINEAR
+
+---
+# Alert Policies (Optional - can be deployed separately)
+#
+# To create alert policies:
+#   gcloud alpha monitoring policies create --policy-from-file=monitoring/alerts.yaml
+
+# Example alert for high error rate:
+# displayName: High Error Rate Alert
+# conditions:
+#   - displayName: Error rate exceeds 5%
+#     conditionThreshold:
+#       filter: metric.type="custom.googleapis.com/agent_engine.errors"
+#       aggregations:
+#         - alignmentPeriod: "60s"
+#           perSeriesAligner: ALIGN_RATE
+#       comparison: COMPARISON_GT
+#       thresholdValue: 0.05
+#       duration: "300s"
+# notificationChannels:
+#   - projects/PROJECT_ID/notificationChannels/CHANNEL_ID
+# alertStrategy:
+#   autoClose: "604800s"  # 7 days

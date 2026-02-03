@@ -10,6 +10,11 @@ Requirements implemented:
 - AC-004: Sync/Async query support
 - AC-006: Error handling with graceful degradation
 - TS-001: Tool registration mechanism
+
+Phase 2 additions:
+- SM-001~005: Session management integration
+- MB-001~006: Memory bank integration
+- OB-001~003: Observability integration
 """
 
 from __future__ import annotations
@@ -62,6 +67,7 @@ class PydanticAIAgentWrapper:
         tools: Sequence[Callable[..., Any]] | None = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        config: AgentConfig | None = None,
     ) -> None:
         """Initialize the agent wrapper with configuration parameters.
 
@@ -73,6 +79,7 @@ class PydanticAIAgentWrapper:
             tools: Sequence of tool functions to register
             temperature: Model temperature (0.0-2.0)
             max_tokens: Maximum output tokens
+            config: Optional full AgentConfig for Phase 2 features
         """
         self.model_name = model
         self.project = project
@@ -81,10 +88,18 @@ class PydanticAIAgentWrapper:
         self.tools = list(tools) if tools else []
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.config = config
 
         # Will be initialized in set_up()
         self._agent: Any = None
         self._is_setup = False
+
+        # Phase 2: Session and Memory managers
+        self._session_manager: Any = None
+        self._memory_manager: Any = None
+        self._tracing_manager: Any = None
+        self._metrics_manager: Any = None
+        self._logging_manager: Any = None
 
         logger.info(
             "agent_wrapper_initialized",
@@ -115,6 +130,7 @@ class PydanticAIAgentWrapper:
             tools=tools,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
+            config=config,
         )
 
     def set_up(self) -> None:
@@ -124,6 +140,7 @@ class PydanticAIAgentWrapper:
         - VertexAI initialization
         - GoogleProvider configuration
         - Pydantic AI Agent creation with tools
+        - Phase 2: Session, Memory, and Observability setup
 
         Raises:
             AgentConfigError: If initialization fails
@@ -157,12 +174,23 @@ class PydanticAIAgentWrapper:
                 tools=self.tools,
             )
 
+            # Phase 2: Initialize observability
+            self._setup_observability()
+
+            # Phase 2: Initialize session manager
+            self._setup_session_manager()
+
+            # Phase 2: Initialize memory manager
+            self._setup_memory_manager()
+
             self._is_setup = True
 
             logger.info(
                 "agent_setup_complete",
                 model=self.model_name,
                 tool_count=len(self.tools),
+                session_enabled=self._session_manager is not None,
+                memory_enabled=self._memory_manager is not None,
             )
 
         except ImportError as e:
@@ -175,6 +203,86 @@ class PydanticAIAgentWrapper:
                 f"Failed to set up agent: {e}",
                 details={"error_type": type(e).__name__},
             ) from e
+
+    def _setup_observability(self) -> None:
+        """Set up observability components (tracing, logging, metrics)."""
+        if self.config is None:
+            return
+
+        try:
+            from agent_engine.observability import (
+                LoggingManager,
+                MetricsManager,
+                TracingManager,
+            )
+
+            obs_config = self.config.observability
+
+            # Set up tracing
+            if obs_config.tracing_enabled:
+                self._tracing_manager = TracingManager.get_instance(
+                    config=obs_config,
+                    project_id=self.project,
+                )
+                self._tracing_manager.setup()
+
+            # Set up logging
+            if obs_config.logging_enabled:
+                self._logging_manager = LoggingManager.get_instance(
+                    config=obs_config,
+                    project_id=self.project,
+                    log_level=self.config.log_level,
+                    log_format=self.config.log_format,
+                )
+                self._logging_manager.setup()
+
+            # Set up metrics
+            if obs_config.metrics_enabled:
+                self._metrics_manager = MetricsManager.get_instance(
+                    config=obs_config,
+                    project_id=self.project,
+                )
+                self._metrics_manager.setup()
+
+            logger.debug(
+                "observability_initialized",
+                tracing=obs_config.tracing_enabled,
+                logging=obs_config.logging_enabled,
+                metrics=obs_config.metrics_enabled,
+            )
+
+        except Exception as e:
+            logger.warning("observability_setup_failed", error=str(e))
+
+    def _setup_session_manager(self) -> None:
+        """Set up session manager."""
+        if self.config is None or not self.config.session.enabled:
+            return
+
+        try:
+            from agent_engine.sessions import SessionManager
+
+            self._session_manager = SessionManager(config=self.config.session)
+            logger.debug("session_manager_initialized")
+
+        except Exception as e:
+            logger.warning("session_manager_setup_failed", error=str(e))
+
+    def _setup_memory_manager(self) -> None:
+        """Set up memory manager and memory tools."""
+        if self.config is None or not self.config.memory.enabled:
+            return
+
+        try:
+            from agent_engine.memory import MemoryManager
+            from agent_engine.tools.memory_tools import set_memory_manager
+
+            self._memory_manager = MemoryManager(config=self.config.memory)
+            set_memory_manager(self._memory_manager)
+            logger.debug("memory_manager_initialized")
+
+        except Exception as e:
+            logger.warning("memory_manager_setup_failed", error=str(e))
 
     def _ensure_setup(self) -> None:
         """Ensure the agent has been set up."""
@@ -215,7 +323,20 @@ class PydanticAIAgentWrapper:
 
         start_time = datetime.now(UTC)
 
+        # Record request metric
+        if self._metrics_manager:
+            self._metrics_manager.record_request(method="query", user_id=user_id)
+
         try:
+            # Set user context for memory tools
+            if user_id:
+                from agent_engine.tools.memory_tools import set_current_user
+                set_current_user(user_id)
+
+            # Retrieve memories if memory manager is available
+            if memories is None and self._memory_manager and user_id:
+                memories = self._get_user_memories(user_id, message)
+
             # Build the full message with context
             full_message = self._build_message(message, context, memories)
 
@@ -230,18 +351,33 @@ class PydanticAIAgentWrapper:
                 start_time=start_time,
             )
 
+            # Record metrics
+            latency_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
+            if self._metrics_manager:
+                self._metrics_manager.record_latency(latency_ms, method="query")
+                if "usage" in response_data and response_data["usage"]:
+                    self._metrics_manager.record_tokens(
+                        input_tokens=response_data["usage"].get("prompt_tokens", 0),
+                        output_tokens=response_data["usage"].get("completion_tokens", 0),
+                        model=self.model_name,
+                    )
+
             logger.info(
                 "query_completed",
                 user_id=user_id,
                 session_id=session_id,
-                latency_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000,
+                latency_ms=latency_ms,
             )
 
             return response_data
 
         except ToolExecutionError:
+            if self._metrics_manager:
+                self._metrics_manager.record_error("ToolExecutionError", method="query")
             raise
         except Exception as e:
+            if self._metrics_manager:
+                self._metrics_manager.record_error(type(e).__name__, method="query")
             logger.error(
                 "query_failed",
                 user_id=user_id,
@@ -287,7 +423,20 @@ class PydanticAIAgentWrapper:
 
         start_time = datetime.now(UTC)
 
+        # Record request metric
+        if self._metrics_manager:
+            self._metrics_manager.record_request(method="aquery", user_id=user_id)
+
         try:
+            # Set user context for memory tools
+            if user_id:
+                from agent_engine.tools.memory_tools import set_current_user
+                set_current_user(user_id)
+
+            # Retrieve memories if memory manager is available
+            if memories is None and self._memory_manager and user_id:
+                memories = await self._aget_user_memories(user_id, message)
+
             # Build the full message with context
             full_message = self._build_message(message, context, memories)
 
@@ -302,18 +451,33 @@ class PydanticAIAgentWrapper:
                 start_time=start_time,
             )
 
+            # Record metrics
+            latency_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
+            if self._metrics_manager:
+                self._metrics_manager.record_latency(latency_ms, method="aquery")
+                if "usage" in response_data and response_data["usage"]:
+                    self._metrics_manager.record_tokens(
+                        input_tokens=response_data["usage"].get("prompt_tokens", 0),
+                        output_tokens=response_data["usage"].get("completion_tokens", 0),
+                        model=self.model_name,
+                    )
+
             logger.info(
                 "async_query_completed",
                 user_id=user_id,
                 session_id=session_id,
-                latency_ms=(datetime.now(UTC) - start_time).total_seconds() * 1000,
+                latency_ms=latency_ms,
             )
 
             return response_data
 
         except ToolExecutionError:
+            if self._metrics_manager:
+                self._metrics_manager.record_error("ToolExecutionError", method="aquery")
             raise
         except Exception as e:
+            if self._metrics_manager:
+                self._metrics_manager.record_error(type(e).__name__, method="aquery")
             logger.error(
                 "async_query_failed",
                 user_id=user_id,
@@ -327,6 +491,143 @@ class PydanticAIAgentWrapper:
                 session_id=session_id,
                 details={"error_type": type(e).__name__},
             ) from e
+
+    async def query_with_session(
+        self,
+        message: str,
+        user_id: str,
+        session_id: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Execute a query with automatic session management.
+
+        This method:
+        1. Creates or retrieves a session
+        2. Records the user message as an event
+        3. Retrieves relevant memories
+        4. Executes the query
+        5. Records the response as an event
+        6. Optionally generates new memories
+
+        Args:
+            message: User message to process
+            user_id: User identifier (required for session)
+            session_id: Optional existing session ID
+            context: Optional additional context
+
+        Returns:
+            Dictionary with response data and session_id
+
+        Raises:
+            AgentQueryError: If the query fails
+        """
+        self._ensure_setup()
+
+        if self._session_manager is None:
+            # Fallback to regular query if sessions disabled
+            return await self.aquery(message=message, user_id=user_id, context=context)
+
+        from agent_engine.sessions import EventAuthor
+
+        # Get or create session
+        if session_id:
+            session = await self._session_manager.get_session(session_id)
+            if session is None:
+                # Session expired or not found, create new one
+                session = await self._session_manager.create_session(user_id)
+        else:
+            session = await self._session_manager.create_session(user_id)
+
+        session_id = session.session_id
+
+        # Record user message event
+        await self._session_manager.append_event(
+            session_id=session_id,
+            author=EventAuthor.USER,
+            content={"text": message},
+        )
+
+        # Retrieve memories
+        memories = None
+        if self._memory_manager:
+            memories = await self._aget_user_memories(user_id, message)
+
+        # Execute query
+        response_data = await self.aquery(
+            message=message,
+            user_id=user_id,
+            session_id=session_id,
+            context=context,
+            memories=memories,
+        )
+
+        # Record agent response event
+        await self._session_manager.append_event(
+            session_id=session_id,
+            author=EventAuthor.AGENT,
+            content={
+                "text": response_data["response"],
+                "tool_calls": response_data.get("tool_calls", []),
+            },
+        )
+
+        # Generate memories from session (if auto-generate enabled)
+        if self._memory_manager and self.config and self.config.memory.auto_generate:
+            await self._memory_manager.generate_from_session(session, user_id)
+
+        # Update metrics
+        if self._metrics_manager:
+            self._metrics_manager.update_active_sessions(0)  # Count unchanged
+
+        response_data["session_id"] = session_id
+        return response_data
+
+    def _get_user_memories(self, user_id: str, query: str) -> list[str]:
+        """Retrieve user memories synchronously.
+
+        Args:
+            user_id: User identifier
+            query: Query for similarity search
+
+        Returns:
+            List of memory strings
+        """
+        import asyncio
+
+        try:
+            loop = asyncio.get_event_loop()
+            memories = loop.run_until_complete(
+                self._memory_manager.retrieve_memories(
+                    user_id=user_id,
+                    query=query,
+                    max_results=5,
+                )
+            )
+            return [m.fact for m in memories]
+        except Exception as e:
+            logger.warning("memory_retrieval_failed", error=str(e))
+            return []
+
+    async def _aget_user_memories(self, user_id: str, query: str) -> list[str]:
+        """Retrieve user memories asynchronously.
+
+        Args:
+            user_id: User identifier
+            query: Query for similarity search
+
+        Returns:
+            List of memory strings
+        """
+        try:
+            memories = await self._memory_manager.retrieve_memories(
+                user_id=user_id,
+                query=query,
+                max_results=5,
+            )
+            return [m.fact for m in memories]
+        except Exception as e:
+            logger.warning("memory_retrieval_failed", error=str(e))
+            return []
 
     def _build_message(
         self,
@@ -440,3 +741,37 @@ class PydanticAIAgentWrapper:
         """
         for tool in tools:
             self.add_tool(tool)
+
+    # Phase 2: Session management accessors
+    @property
+    def session_manager(self) -> Any:
+        """Get the session manager instance."""
+        return self._session_manager
+
+    @property
+    def memory_manager(self) -> Any:
+        """Get the memory manager instance."""
+        return self._memory_manager
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get agent statistics including Phase 2 metrics.
+
+        Returns:
+            Dictionary with agent statistics
+        """
+        stats: dict[str, Any] = {
+            "model": self.model_name,
+            "is_setup": self._is_setup,
+            "tool_count": len(self.tools),
+        }
+
+        if self._session_manager:
+            stats["sessions"] = self._session_manager.get_stats()
+
+        if self._memory_manager:
+            stats["memory"] = self._memory_manager.get_stats()
+
+        if self._metrics_manager:
+            stats["metrics"] = self._metrics_manager.get_stats()
+
+        return stats

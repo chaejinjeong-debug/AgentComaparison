@@ -11,7 +11,12 @@ import pytest
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from agent_engine.config import AgentConfig
+from agent_engine.config import (
+    AgentConfig,
+    MemoryConfig,
+    ObservabilityConfig,
+    SessionConfig,
+)
 from agent_engine.tools import calculate, convert_timezone, get_current_datetime, search
 
 
@@ -29,6 +34,62 @@ def sample_config() -> AgentConfig:
         description="Test agent for unit tests",
         log_level="DEBUG",
         log_format="text",
+    )
+
+
+@pytest.fixture
+def session_config() -> SessionConfig:
+    """Create a sample SessionConfig for testing."""
+    return SessionConfig(
+        enabled=True,
+        default_ttl_seconds=3600,  # 1 hour for tests
+        max_events_per_session=100,
+    )
+
+
+@pytest.fixture
+def memory_config() -> MemoryConfig:
+    """Create a sample MemoryConfig for testing."""
+    return MemoryConfig(
+        enabled=True,
+        auto_generate=True,
+        max_memories_per_user=100,
+        similarity_threshold=0.5,
+    )
+
+
+@pytest.fixture
+def observability_config() -> ObservabilityConfig:
+    """Create a sample ObservabilityConfig for testing."""
+    return ObservabilityConfig(
+        tracing_enabled=False,  # Disable for tests
+        logging_enabled=True,
+        metrics_enabled=True,
+        sample_rate=1.0,
+    )
+
+
+@pytest.fixture
+def full_config(
+    session_config: SessionConfig,
+    memory_config: MemoryConfig,
+    observability_config: ObservabilityConfig,
+) -> AgentConfig:
+    """Create a full AgentConfig with Phase 2 features for testing."""
+    return AgentConfig(
+        project_id="test-project",
+        location="asia-northeast3",
+        model="gemini-2.5-pro",
+        temperature=0.7,
+        max_tokens=4096,
+        system_prompt="You are a helpful test assistant.",
+        display_name="test-agent",
+        description="Test agent for unit tests",
+        log_level="DEBUG",
+        log_format="text",
+        session=session_config,
+        memory=memory_config,
+        observability=observability_config,
     )
 
 
@@ -98,6 +159,13 @@ def env_vars() -> dict[str, str]:
         "AGENT_SYSTEM_PROMPT": "You are a test assistant.",
         "LOG_LEVEL": "DEBUG",
         "LOG_FORMAT": "text",
+        # Phase 2 environment variables
+        "SESSION_ENABLED": "true",
+        "SESSION_TTL_SECONDS": "3600",
+        "MEMORY_ENABLED": "true",
+        "MEMORY_AUTO_GENERATE": "true",
+        "TRACING_ENABLED": "false",
+        "METRICS_ENABLED": "true",
     }
 
 
@@ -131,3 +199,57 @@ class MockAgentResult:
 def mock_agent_result() -> MockAgentResult:
     """Create a mock agent result."""
     return MockAgentResult()
+
+
+# Phase 2 fixtures
+
+
+@pytest.fixture
+def session_manager(session_config: SessionConfig):
+    """Create a SessionManager for testing."""
+    from agent_engine.sessions import SessionManager
+
+    return SessionManager(config=session_config)
+
+
+@pytest.fixture
+def memory_manager(memory_config: MemoryConfig):
+    """Create a MemoryManager for testing."""
+    from agent_engine.memory import MemoryManager
+
+    return MemoryManager(config=memory_config)
+
+
+@pytest.fixture
+def memory_retriever():
+    """Create a MemoryRetriever for testing."""
+    from agent_engine.memory import MemoryRetriever
+
+    return MemoryRetriever(similarity_threshold=0.5)
+
+
+@pytest.fixture
+def metrics_manager(observability_config: ObservabilityConfig):
+    """Create a MetricsManager for testing."""
+    from agent_engine.observability import MetricsManager
+
+    manager = MetricsManager(config=observability_config)
+    manager.setup()
+    return manager
+
+
+@pytest.fixture
+def tracing_manager(observability_config: ObservabilityConfig):
+    """Create a TracingManager for testing."""
+    from agent_engine.observability import TracingManager
+
+    return TracingManager(config=observability_config)
+
+
+@pytest.fixture
+def logging_manager(observability_config: ObservabilityConfig):
+    """Create a LoggingManager for testing."""
+    from agent_engine.observability import LoggingManager
+
+    manager = LoggingManager(config=observability_config)
+    return manager
