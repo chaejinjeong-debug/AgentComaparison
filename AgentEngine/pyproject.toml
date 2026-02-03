@@ -24,6 +24,7 @@ dependencies = [
     "google-cloud-trace>=1.11.0",
     "google-cloud-logging>=3.8.0",
     "google-cloud-monitoring>=2.18.0",
+    "pyyaml>=6.0.3",
 ]
 
 [project.optional-dependencies]

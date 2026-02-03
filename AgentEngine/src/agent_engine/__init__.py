@@ -1,6 +1,6 @@
 """Pydantic AI Agent Platform on VertexAI Agent Engine."""
 
-from agent_engine.agent import PydanticAIAgentWrapper
+from agent_engine.agent import PydanticAIAgentWrapper, StreamChunk
 from agent_engine.config import (
     AgentConfig,
     EvaluationConfig,
@@ -26,11 +26,12 @@ from agent_engine.version import (
     VersionStatus,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     # Core
     "PydanticAIAgentWrapper",
+    "StreamChunk",
     # Configuration
     "AgentConfig",
     "SessionConfig",
