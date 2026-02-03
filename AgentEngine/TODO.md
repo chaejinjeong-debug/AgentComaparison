@@ -171,7 +171,7 @@ tests/
 ## Phase 3: Production Readiness (Week 9-12) ✅
 
 ### Week 9: CI/CD 파이프라인
-- [x] Cloud Build 기반 CI/CD 구축
+- [x] GitHub Actions 기반 CI/CD 구축 (Cloud Build에서 마이그레이션)
 - [x] uv 기반 의존성 설치 자동화
 - [x] 자동화된 테스트 실행 (pytest)
 - [x] 코드 품질 게이트 (ruff, mypy, bandit)
@@ -282,7 +282,7 @@ tests/
 | **Language** | Python 3.11+ | |
 | **Test** | pytest | 단위/통합 테스트 |
 | **Lint** | ruff, mypy | 코드 품질 |
-| **CI/CD** | Cloud Build | GCP 네이티브 |
+| **CI/CD** | GitHub Actions | Workload Identity Federation |
 | **Observability** | OpenTelemetry | Cloud Trace/Monitoring |
 
 ---
