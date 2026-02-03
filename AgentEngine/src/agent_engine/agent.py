@@ -337,8 +337,13 @@ class PydanticAIAgentWrapper:
             if memories is None and self._memory_manager and user_id:
                 memories = self._get_user_memories(user_id, message)
 
+            # Retrieve session history if session_id is provided
+            session_history = None
+            if session_id and self._session_manager:
+                session_history = self._get_session_history_sync(session_id)
+
             # Build the full message with context
-            full_message = self._build_message(message, context, memories)
+            full_message = self._build_message(message, context, memories, session_history)
 
             # Run the agent synchronously
             result = self._agent.run_sync(full_message)
@@ -437,8 +442,13 @@ class PydanticAIAgentWrapper:
             if memories is None and self._memory_manager and user_id:
                 memories = await self._aget_user_memories(user_id, message)
 
+            # Retrieve session history if session_id is provided
+            session_history = None
+            if session_id and self._session_manager:
+                session_history = await self._aget_session_history(session_id)
+
             # Build the full message with context
-            full_message = self._build_message(message, context, memories)
+            full_message = self._build_message(message, context, memories, session_history)
 
             # Run the agent asynchronously
             result = await self._agent.run(full_message)
@@ -629,23 +639,79 @@ class PydanticAIAgentWrapper:
             logger.warning("memory_retrieval_failed", error=str(e))
             return []
 
+    def _get_session_history_sync(self, session_id: str) -> list[dict[str, str]]:
+        """Retrieve session history synchronously.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            List of message dicts with 'role' and 'content' keys
+        """
+        import asyncio
+
+        try:
+            loop = asyncio.get_event_loop()
+            events = loop.run_until_complete(
+                self._session_manager.list_events(session_id)
+            )
+            history = []
+            for event in events:
+                role = "user" if event.author.value == "user" else "assistant"
+                content = event.content.get("text", str(event.content))
+                history.append({"role": role, "content": content})
+            return history
+        except Exception as e:
+            logger.warning("session_history_retrieval_failed", error=str(e))
+            return []
+
+    async def _aget_session_history(self, session_id: str) -> list[dict[str, str]]:
+        """Retrieve session history asynchronously.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            List of message dicts with 'role' and 'content' keys
+        """
+        try:
+            events = await self._session_manager.list_events(session_id)
+            history = []
+            for event in events:
+                role = "user" if event.author.value == "user" else "assistant"
+                content = event.content.get("text", str(event.content))
+                history.append({"role": role, "content": content})
+            return history
+        except Exception as e:
+            logger.warning("session_history_retrieval_failed", error=str(e))
+            return []
+
     def _build_message(
         self,
         message: str,
         context: dict[str, Any] | None = None,
         memories: list[str] | None = None,
+        session_history: list[dict[str, str]] | None = None,
     ) -> str:
-        """Build the full message with context and memories.
+        """Build the full message with context, memories, and session history.
 
         Args:
             message: Original user message
             context: Optional additional context
             memories: Optional list of memories
+            session_history: Optional list of previous messages
 
         Returns:
             Full message string
         """
         parts = []
+
+        # Add session history if provided
+        if session_history:
+            history_text = "\n".join(
+                f"- {msg['role']}: {msg['content']}" for msg in session_history
+            )
+            parts.append(f"[Previous conversation]\n{history_text}\n")
 
         # Add memories if provided
         if memories:
