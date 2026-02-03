@@ -1,13 +1,10 @@
-"""VertexAI memory storage backend using REST API for production use."""
+"""VertexAI memory storage backend using official SDK for production use."""
 
-from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
-import google.auth
-import google.auth.transport.requests
-import httpx
 import structlog
+import vertexai
 
 from agent_engine.config import MemoryConfig
 from agent_engine.memory.backends.base import MemoryBackend
@@ -17,9 +14,9 @@ logger = structlog.get_logger(__name__)
 
 
 class VertexAIMemoryBackend(MemoryBackend):
-    """VertexAI Agent Engine Memory Bank storage backend using REST API.
+    """VertexAI Agent Engine Memory Bank storage backend using official SDK.
 
-    This backend uses VertexAI's managed Memory Bank REST API for:
+    This backend uses VertexAI's managed Memory Bank SDK for:
     - Persistent memory storage
     - Built-in similarity search
     - Automatic replication and backup
@@ -49,46 +46,32 @@ class VertexAIMemoryBackend(MemoryBackend):
         self.agent_engine_id = agent_engine_id
         self.config = config or MemoryConfig()
 
-        # REST API configuration
-        self._base_url = f"https://{location}-aiplatform.googleapis.com/v1"
-        self._reasoning_engine = (
+        # SDK client (lazy init)
+        self._client: vertexai.Client | None = None
+        self._agent_engine_name = (
             f"projects/{project_id}/locations/{location}"
             f"/reasoningEngines/{agent_engine_id}"
         )
-        self._credentials = None
-        self._token_expiry = None
 
         # Local cache for tracking
         self._memory_cache: dict[str, Memory] = {}
         self._user_index: dict[str, set[str]] = {}
 
         logger.info(
-            "VertexAIMemoryBackend initialized",
+            "VertexAIMemoryBackend initialized (SDK)",
             project_id=project_id,
             location=location,
             agent_engine_id=agent_engine_id,
         )
 
-    def _get_access_token(self) -> str:
-        """Get or refresh Google Cloud access token."""
-        now = datetime.now(timezone.utc)
-
-        if self._credentials is None or self._token_expiry is None or now >= self._token_expiry:
-            self._credentials, _ = google.auth.default(
-                scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    def _get_client(self) -> vertexai.Client:
+        """Get or create VertexAI SDK client."""
+        if self._client is None:
+            self._client = vertexai.Client(
+                project=self.project_id,
+                location=self.location,
             )
-            self._credentials.refresh(google.auth.transport.requests.Request())
-            # Set expiry 5 minutes before actual expiry
-            self._token_expiry = now + timedelta(minutes=55)
-
-        return self._credentials.token
-
-    def _get_headers(self) -> dict[str, str]:
-        """Get HTTP headers with authentication."""
-        return {
-            "Authorization": f"Bearer {self._get_access_token()}",
-            "Content-Type": "application/json",
-        }
+        return self._client
 
     async def save_memory(
         self,
@@ -100,94 +83,52 @@ class VertexAIMemoryBackend(MemoryBackend):
         source: str = "explicit",
         metadata: dict[str, Any] | None = None,
     ) -> Memory:
-        """Save a memory using VertexAI Memory Bank REST API."""
-        url = f"{self._base_url}/{self._reasoning_engine}/memories:generate"
-
-        # Build scope
-        if scope == MemoryScope.GLOBAL:
-            scope_data = {"global": True}
-        else:
-            scope_data = {"userId": user_id}
-
-        request_body = {
-            "directMemoriesSource": {
-                "directMemories": [
-                    {
-                        "fact": fact,
-                    }
-                ]
-            },
-            "scope": scope_data,
-        }
-
+        """Save a memory using VertexAI Memory Bank SDK."""
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    url,
-                    headers=self._get_headers(),
-                    json=request_body,
-                )
+            client = self._get_client()
 
-                memory_id = str(uuid4())
+            # Determine scope
+            if scope == MemoryScope.GLOBAL:
+                scope_data = {"global": True}
+            else:
+                scope_data = {"user_id": user_id}
 
-                if response.status_code in [200, 201]:
-                    data = response.json()
-                    # Extract memory ID from operation name if available
-                    name = data.get("name", "")
-                    if name:
-                        # Try to extract a meaningful ID from the operation
-                        parts = name.split("/")
-                        for i, part in enumerate(parts):
-                            if part == "memories" and i + 1 < len(parts):
-                                memory_id = parts[i + 1]
-                                break
+            vertex_memory = client.agent_engines.memories.create(
+                name=self._agent_engine_name,
+                fact=fact,
+                scope=scope_data,
+            )
 
-                    memory = Memory(
-                        memory_id=memory_id,
-                        user_id=user_id,
-                        fact=fact,
-                        topics=topics or [],
-                        scope=scope,
-                        source=source,
-                        embedding=embedding,
-                        metadata=metadata or {},
-                    )
+            # Extract memory ID from the full resource name
+            memory_id = vertex_memory.name.split("/")[-1]
 
-                    # Cache locally
-                    self._memory_cache[memory_id] = memory
-                    if user_id not in self._user_index:
-                        self._user_index[user_id] = set()
-                    self._user_index[user_id].add(memory_id)
+            memory = Memory(
+                memory_id=memory_id,
+                user_id=user_id,
+                fact=fact,
+                topics=topics or [],
+                scope=scope,
+                source=source,
+                embedding=embedding,
+                metadata=metadata or {},
+            )
 
-                    logger.info(
-                        "Memory saved to VertexAI",
-                        memory_id=memory_id,
-                        user_id=user_id,
-                    )
+            # Cache locally
+            self._memory_cache[memory_id] = memory
+            if user_id not in self._user_index:
+                self._user_index[user_id] = set()
+            self._user_index[user_id].add(memory_id)
 
-                    return memory
-                else:
-                    logger.error(
-                        "Failed to save memory to VertexAI",
-                        status=response.status_code,
-                        error=response.text[:200],
-                    )
-                    # Return local memory anyway
-                    memory = Memory(
-                        memory_id=memory_id,
-                        user_id=user_id,
-                        fact=fact,
-                        topics=topics or [],
-                        scope=scope,
-                        source=source,
-                        embedding=embedding,
-                        metadata=metadata or {},
-                    )
-                    self._memory_cache[memory_id] = memory
-                    return memory
+            logger.info(
+                "Memory saved to VertexAI via SDK",
+                memory_id=memory_id,
+                user_id=user_id,
+            )
 
-        except httpx.HTTPError as e:
-            logger.error("HTTP error saving memory to VertexAI", error=str(e))
+            return memory
+
+        except Exception as e:
+            logger.error("Failed to save memory via SDK", error=str(e))
             # Create local memory as fallback
             memory_id = str(uuid4())
             memory = Memory(
@@ -201,6 +142,9 @@ class VertexAIMemoryBackend(MemoryBackend):
                 metadata=metadata or {},
             )
             self._memory_cache[memory_id] = memory
+            if user_id not in self._user_index:
+                self._user_index[user_id] = set()
+            self._user_index[user_id].add(memory_id)
             return memory
 
     async def retrieve_memories(
@@ -211,88 +155,45 @@ class VertexAIMemoryBackend(MemoryBackend):
         max_results: int = 10,
         include_global: bool = True,
     ) -> list[Memory]:
-        """Retrieve memories using VertexAI Memory Bank REST API."""
-        url = f"{self._base_url}/{self._reasoning_engine}/memories:retrieve"
-
-        # Build request
-        request_body: dict[str, Any] = {
-            "scope": {"userId": user_id},
-        }
-
-        if query:
-            request_body["similaritySearchParams"] = {
-                "searchQuery": query,
-                "topK": max_results,
-            }
-
-        memories = []
+        """Retrieve memories using VertexAI Memory Bank SDK."""
+        memories: list[Memory] = []
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # Retrieve user memories
-                response = await client.post(
-                    url,
-                    headers=self._get_headers(),
-                    json=request_body,
+            client = self._get_client()
+
+            # Retrieve user memories
+            for mem in client.agent_engines.memories.retrieve(
+                name=self._agent_engine_name,
+                scope={"user_id": user_id},
+            ):
+                memory_id = mem.name.split("/")[-1]
+                memory = Memory(
+                    memory_id=memory_id,
+                    user_id=user_id,
+                    fact=getattr(mem, "fact", str(mem)),
+                    scope=MemoryScope.USER,
+                    source="vertex_ai",
                 )
+                memories.append(memory)
 
-                if response.status_code == 200:
-                    data = response.json()
-
-                    for mem_data in data.get("memories", []):
-                        name = mem_data.get("name", "")
-                        memory_id = name.split("/")[-1] if "/" in name else str(uuid4())
-
-                        memory = Memory(
-                            memory_id=memory_id,
-                            user_id=user_id,
-                            fact=mem_data.get("fact", str(mem_data)),
-                            scope=MemoryScope.USER,
-                            source="vertex_ai",
-                        )
-                        memories.append(memory)
-                else:
-                    logger.warning(
-                        "Failed to retrieve memories from VertexAI",
-                        status=response.status_code,
-                        error=response.text[:100],
+            # Retrieve global memories if requested
+            if include_global:
+                for mem in client.agent_engines.memories.retrieve(
+                    name=self._agent_engine_name,
+                    scope={"global": True},
+                ):
+                    memory_id = mem.name.split("/")[-1]
+                    memory = Memory(
+                        memory_id=memory_id,
+                        user_id=user_id,
+                        fact=getattr(mem, "fact", str(mem)),
+                        scope=MemoryScope.GLOBAL,
+                        source="vertex_ai",
                     )
+                    memories.append(memory)
 
-                # Retrieve global memories if requested
-                if include_global:
-                    global_request = {
-                        "scope": {"global": True},
-                    }
-                    if query:
-                        global_request["similaritySearchParams"] = {
-                            "searchQuery": query,
-                            "topK": max_results,
-                        }
-
-                    global_response = await client.post(
-                        url,
-                        headers=self._get_headers(),
-                        json=global_request,
-                    )
-
-                    if global_response.status_code == 200:
-                        global_data = global_response.json()
-
-                        for mem_data in global_data.get("memories", []):
-                            name = mem_data.get("name", "")
-                            memory_id = name.split("/")[-1] if "/" in name else str(uuid4())
-
-                            memory = Memory(
-                                memory_id=memory_id,
-                                user_id=user_id,
-                                fact=mem_data.get("fact", str(mem_data)),
-                                scope=MemoryScope.GLOBAL,
-                                source="vertex_ai",
-                            )
-                            memories.append(memory)
-
-        except httpx.HTTPError as e:
-            logger.error("HTTP error retrieving memories from VertexAI", error=str(e))
+        except Exception as e:
+            logger.warning("Failed to retrieve memories via SDK", error=str(e))
 
         # Fall back to local cache if no results from API
         if not memories:
@@ -302,12 +203,44 @@ class VertexAIMemoryBackend(MemoryBackend):
                     memories.append(self._memory_cache[memory_id])
 
         logger.debug(
-            "Memories retrieved from VertexAI",
+            "Memories retrieved from VertexAI via SDK",
             user_id=user_id,
             count=len(memories),
         )
 
         return memories[:max_results]
+
+    async def generate_memories_from_session(
+        self,
+        user_id: str,
+        session_name: str,
+    ) -> list[Memory]:
+        """Generate memories from a session using VertexAI Memory Bank SDK.
+
+        This uses the vertex_session_source to automatically extract memories
+        from conversation history.
+        """
+        try:
+            client = self._get_client()
+
+            client.agent_engines.memories.generate(
+                name=self._agent_engine_name,
+                vertex_session_source={"session": session_name},
+                scope={"user_id": user_id},
+            )
+
+            logger.info(
+                "Memories generated from session via SDK",
+                session_name=session_name,
+                user_id=user_id,
+            )
+
+            # Retrieve the generated memories
+            return await self.retrieve_memories(user_id, include_global=False)
+
+        except Exception as e:
+            logger.error("Failed to generate memories from session via SDK", error=str(e))
+            return []
 
     async def get_memory(self, memory_id: str) -> Memory | None:
         """Get a specific memory."""
@@ -358,32 +291,27 @@ class VertexAIMemoryBackend(MemoryBackend):
 
     async def delete_memory(self, memory_id: str) -> bool:
         """Delete a specific memory."""
-        url = f"{self._base_url}/{self._reasoning_engine}/memories/{memory_id}"
-
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.delete(url, headers=self._get_headers())
+            client = self._get_client()
+            memory_name = f"{self._agent_engine_name}/memories/{memory_id}"
 
-                # Remove from local cache regardless of API result
-                memory = self._memory_cache.pop(memory_id, None)
-                if memory:
-                    user_memories = self._user_index.get(memory.user_id, set())
-                    user_memories.discard(memory_id)
+            client.agent_engines.memories.delete(
+                name=memory_name,
+                config={"wait_for_completion": True},
+            )
 
-                if response.status_code in [200, 204, 404]:
-                    logger.info("Memory deleted from VertexAI", memory_id=memory_id)
-                    return True
-                else:
-                    logger.warning(
-                        "Failed to delete memory from VertexAI (removed from cache)",
-                        memory_id=memory_id,
-                        status=response.status_code,
-                    )
-                    return True  # Still return True since it's removed from cache
+            # Remove from local cache
+            memory = self._memory_cache.pop(memory_id, None)
+            if memory:
+                user_memories = self._user_index.get(memory.user_id, set())
+                user_memories.discard(memory_id)
 
-        except httpx.HTTPError as e:
-            logger.error("HTTP error deleting memory from VertexAI", error=str(e))
-            # Remove from cache anyway
+            logger.info("Memory deleted from VertexAI via SDK", memory_id=memory_id)
+            return True
+
+        except Exception as e:
+            logger.warning("Failed to delete memory via SDK", memory_id=memory_id, error=str(e))
+            # Still remove from local cache
             memory = self._memory_cache.pop(memory_id, None)
             if memory:
                 user_memories = self._user_index.get(memory.user_id, set())
@@ -392,22 +320,44 @@ class VertexAIMemoryBackend(MemoryBackend):
 
     async def delete_user_memories(self, user_id: str) -> int:
         """Delete all memories for a user (GDPR compliance)."""
-        memory_ids = list(self._user_index.get(user_id, set()))
-        deleted_count = 0
+        try:
+            client = self._get_client()
 
-        for memory_id in memory_ids:
-            if await self.delete_memory(memory_id):
-                deleted_count += 1
+            # Use purge to delete all memories for a user
+            filter_string = f'scope.user_id="{user_id}"'
+            client.agent_engines.memories.purge(
+                name=self._agent_engine_name,
+                filter=filter_string,
+                force=True,
+                config={"wait_for_completion": True},
+            )
 
-        self._user_index.pop(user_id, None)
+            # Clear local cache
+            deleted_count = len(self._user_index.get(user_id, set()))
+            for memory_id in list(self._user_index.get(user_id, set())):
+                self._memory_cache.pop(memory_id, None)
+            self._user_index.pop(user_id, None)
 
-        logger.info(
-            "User memories deleted from VertexAI (GDPR)",
-            user_id=user_id,
-            count=deleted_count,
-        )
+            logger.info(
+                "User memories purged from VertexAI via SDK (GDPR)",
+                user_id=user_id,
+                count=deleted_count,
+            )
 
-        return deleted_count
+            return deleted_count
+
+        except Exception as e:
+            logger.error("Failed to purge user memories via SDK", user_id=user_id, error=str(e))
+            # Fall back to individual deletion
+            memory_ids = list(self._user_index.get(user_id, set()))
+            deleted_count = 0
+
+            for memory_id in memory_ids:
+                if await self.delete_memory(memory_id):
+                    deleted_count += 1
+
+            self._user_index.pop(user_id, None)
+            return deleted_count
 
     def get_user_memory_count(self, user_id: str) -> int:
         """Get the number of memories for a user."""
@@ -416,7 +366,7 @@ class VertexAIMemoryBackend(MemoryBackend):
     def get_stats(self) -> dict[str, Any]:
         """Get backend statistics."""
         return {
-            "backend": "vertex_ai",
+            "backend": "vertex_ai_sdk",
             "project_id": self.project_id,
             "location": self.location,
             "agent_engine_id": self.agent_engine_id,

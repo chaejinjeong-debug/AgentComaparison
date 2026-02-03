@@ -1,7 +1,7 @@
 # TODO: Pydantic AI Agent Platform on VertexAI Agent Engine
 
 **최종 수정일**: 2026-02-03
-**상태**: Phase 2 Complete
+**상태**: Phase 2.5 Complete (SDK Migration)
 
 ---
 
@@ -82,12 +82,37 @@
 - [x] Config에 SessionBackendType, MemoryBackendType enum 추가
 - [x] 기존 테스트 128개 통과 확인
 
+### SDK 마이그레이션 (REST API → vertexai.Client())
+- [x] Sessions Backend: httpx REST API → vertexai.Client() SDK
+- [x] Memory Backend: httpx REST API → vertexai.Client() SDK
+- [x] `_get_access_token()`, `_get_headers()` 제거 (SDK가 인증 처리)
+- [x] pyproject.toml에서 httpx 의존성 제거
+- [x] 테스트 128개 통과 확인
+
+**SDK 사용 예시:**
+```python
+import vertexai
+client = vertexai.Client(project=project_id, location=location)
+
+# Sessions
+session = client.agent_engines.sessions.create(name=agent_engine_name, user_id=user_id)
+client.agent_engines.sessions.events.append(name=session_name, author="user", ...)
+client.agent_engines.sessions.delete(name=session_name)
+
+# Memory Bank
+memory = client.agent_engines.memories.create(name=agent_engine_name, fact=fact, scope=scope)
+client.agent_engines.memories.retrieve(name=agent_engine_name, scope=scope)
+client.agent_engines.memories.delete(name=memory_name)
+client.agent_engines.memories.purge(name=agent_engine_name, filter=filter_string, force=True)
+```
+
 **변경 파일:**
 - `config.py`: Backend 타입 enum 추가
 - `sessions/backends/`: 신규 디렉토리 (base.py, in_memory.py, vertex_ai.py)
 - `sessions/manager.py`: Backend 위임 패턴 적용
 - `memory/backends/`: 신규 디렉토리 (base.py, in_memory.py, vertex_ai.py)
 - `memory/manager.py`: Backend 위임 패턴 적용
+- `pyproject.toml`: httpx 의존성 제거
 
 ---
 
