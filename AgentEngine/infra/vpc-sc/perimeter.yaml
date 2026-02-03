@@ -1,0 +1,127 @@
+# VPC Service Controls Configuration for AgentEngine
+# Phase 3: Security & Production
+
+# Access Policy (Organization-level)
+access_policy:
+  organization_id: "${ORGANIZATION_ID}"
+  title: "Agent Engine Access Policy"
+
+# Access Levels (conditions for access)
+access_levels:
+  # Corporate network access
+  - name: corp_network
+    title: "Corporate Network Access"
+    basic:
+      conditions:
+        - ip_subnetworks:
+            - "10.0.0.0/8"      # Internal network
+            - "172.16.0.0/12"   # VPN range
+          # Add your corporate IP ranges
+
+  # Trusted identities access
+  - name: trusted_identities
+    title: "Trusted Identities"
+    basic:
+      conditions:
+        - members:
+            - serviceAccount:agent-engine-runtime@${PROJECT_ID}.iam.gserviceaccount.com
+            - serviceAccount:agent-engine-deployer@${PROJECT_ID}.iam.gserviceaccount.com
+            - group:security-admins@your-domain.com
+
+  # Device trust (requires endpoint verification)
+  - name: trusted_devices
+    title: "Trusted Devices"
+    basic:
+      conditions:
+        - device_policy:
+            require_screen_lock: true
+            allowed_encryption_statuses:
+              - ENCRYPTED
+            os_constraints:
+              - os_type: DESKTOP_MAC
+                minimum_version: "10.15.0"
+              - os_type: DESKTOP_WINDOWS
+                minimum_version: "10.0.19041"
+
+# Service Perimeter (the actual boundary)
+service_perimeter:
+  name: agent_engine_perimeter
+  title: "Agent Engine Service Perimeter"
+  type: PERIMETER_TYPE_REGULAR
+
+  # Protected resources (projects inside the perimeter)
+  resources:
+    - projects/${PRODUCTION_PROJECT_NUMBER}
+
+  # Restricted services (APIs protected by the perimeter)
+  restricted_services:
+    - aiplatform.googleapis.com
+    - storage.googleapis.com
+    - logging.googleapis.com
+    - monitoring.googleapis.com
+    - cloudtrace.googleapis.com
+    - bigquery.googleapis.com
+
+  # Access levels required to enter the perimeter
+  access_levels:
+    - accessPolicies/${ACCESS_POLICY_ID}/accessLevels/corp_network
+    - accessPolicies/${ACCESS_POLICY_ID}/accessLevels/trusted_identities
+
+  # VPC accessible services (services accessible from VPC)
+  vpc_accessible_services:
+    enable_restriction: true
+    allowed_services:
+      - aiplatform.googleapis.com
+      - storage.googleapis.com
+
+  # Ingress policies (allow specific external access)
+  ingress_policies:
+    # Allow CI/CD from GitHub Actions
+    - ingress_from:
+        identity_type: ANY_IDENTITY
+        sources:
+          - access_level: accessPolicies/${ACCESS_POLICY_ID}/accessLevels/trusted_identities
+      ingress_to:
+        operations:
+          - service_name: aiplatform.googleapis.com
+            method_selectors:
+              - method: google.cloud.aiplatform.v1.AgentService.DeployAgent
+              - method: google.cloud.aiplatform.v1.AgentService.Query
+
+    # Allow monitoring from external tools
+    - ingress_from:
+        identity_type: ANY_SERVICE_ACCOUNT
+        sources:
+          - access_level: accessPolicies/${ACCESS_POLICY_ID}/accessLevels/trusted_identities
+      ingress_to:
+        operations:
+          - service_name: monitoring.googleapis.com
+            method_selectors:
+              - method: "*"
+
+  # Egress policies (allow specific outbound access)
+  egress_policies:
+    # Allow access to external APIs (if needed)
+    - egress_from:
+        identity_type: ANY_SERVICE_ACCOUNT
+      egress_to:
+        operations:
+          - service_name: "*"
+        resources:
+          - "*"
+        # Restrict to specific external resources if needed
+
+# Dry-run perimeter (for testing without enforcement)
+dry_run_perimeter:
+  name: agent_engine_perimeter_dryrun
+  title: "Agent Engine Dry-Run Perimeter"
+  type: PERIMETER_TYPE_REGULAR
+  use_explicit_dry_run_spec: true
+
+  dry_run_spec:
+    resources:
+      - projects/${STAGING_PROJECT_NUMBER}
+    restricted_services:
+      - aiplatform.googleapis.com
+    access_levels:
+      - accessPolicies/${ACCESS_POLICY_ID}/accessLevels/trusted_identities

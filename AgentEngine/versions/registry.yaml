@@ -1,0 +1,26 @@
+# Version Registry for AgentEngine
+# This file tracks all deployed versions and their status
+#
+# Schema:
+#   versions:
+#     - version: semver string
+#       environment: staging | production
+#       agent_engine_id: deployed resource ID
+#       deployed_at: ISO timestamp
+#       deployed_by: user/service account
+#       commit_sha: git commit hash
+#       status: active | inactive | rollback
+#       metadata: optional key-value pairs
+
+schema_version: "1.0"
+
+# Current active versions
+current:
+  staging: null
+  production: null
+
+# Version history (newest first)
+versions: []
+
+# Rollback history
+rollbacks: []

@@ -33,6 +33,15 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
+    # Phase 3: CI/CD & Security
+    "bandit>=1.7.0",
+    "radon>=6.0.0",
+    # Phase 3: Version Management
+    "pyyaml>=6.0.0",
+    "semver>=3.0.0",
+    # Phase 3: Evaluation & Performance
+    "pytest-benchmark>=4.0.0",
+    "locust>=2.20.0",
 ]
 
 [build-system]
@@ -75,3 +84,33 @@ disallow_untyped_defs = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["src/agent_engine"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+
+[tool.coverage.html]
+directory = "coverage_html"
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = ["B101"]  # Skip assert warnings in non-test code
+severity = "ll"  # Only report medium and high severity
+
+[tool.bandit.assert_used]
+skips = ["*_test.py", "test_*.py"]

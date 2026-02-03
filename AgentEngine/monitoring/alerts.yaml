@@ -1,0 +1,276 @@
+# Alert Policies for AgentEngine (OB-005)
+# Phase 3: Security & Production
+
+# Notification channels (define where alerts go)
+notification_channels:
+  # Slack channel for alerts
+  - type: slack
+    display_name: "Agent Engine Alerts - Slack"
+    labels:
+      channel_name: "#agent-engine-alerts"
+      auth_token: "${SLACK_AUTH_TOKEN}"  # Store in Secret Manager
+
+  # Email for critical alerts
+  - type: email
+    display_name: "Agent Engine Alerts - Email"
+    labels:
+      email_address: "platform-oncall@your-domain.com"
+
+  # PagerDuty for P0 incidents
+  - type: pagerduty
+    display_name: "Agent Engine Alerts - PagerDuty"
+    labels:
+      service_key: "${PAGERDUTY_SERVICE_KEY}"  # Store in Secret Manager
+
+# Alert policies
+alert_policies:
+  # Error Rate Alert
+  - display_name: "Agent Engine - High Error Rate"
+    documentation:
+      content: |
+        ## Alert: High Error Rate
+
+        The error rate for Agent Engine has exceeded 5%.
+
+        ### Investigation Steps
+        1. Check Cloud Logging for error details
+        2. Review recent deployments
+        3. Check upstream dependencies (Vertex AI, etc.)
+
+        ### Runbook
+        See docs/RUNBOOK.md#high-error-rate
+    conditions:
+      - display_name: "Error rate > 5%"
+        condition_threshold:
+          filter: |
+            resource.type="aiplatform.googleapis.com/AgentEngine"
+            metric.type="aiplatform.googleapis.com/agent_engine/request_count"
+            metric.labels.response_code!="200"
+          aggregations:
+            - alignment_period: "300s"
+              per_series_aligner: ALIGN_RATE
+              cross_series_reducer: REDUCE_SUM
+              group_by_fields:
+                - resource.labels.agent_engine_id
+          comparison: COMPARISON_GT
+          threshold_value: 0.05  # 5%
+          duration: "300s"  # 5 minutes
+    combiner: OR
+    notification_channel_strategy:
+      notification_channel_filter: "type='slack' OR type='email'"
+    severity: WARNING
+
+  # P99 Latency Alert
+  - display_name: "Agent Engine - High P99 Latency"
+    documentation:
+      content: |
+        ## Alert: High P99 Latency
+
+        P99 latency has exceeded 10 seconds.
+
+        ### Investigation Steps
+        1. Check Cloud Trace for slow requests
+        2. Review model/prompt complexity
+        3. Check for resource saturation
+
+        ### Runbook
+        See docs/RUNBOOK.md#high-latency
+    conditions:
+      - display_name: "P99 latency > 10s"
+        condition_threshold:
+          filter: |
+            resource.type="aiplatform.googleapis.com/AgentEngine"
+            metric.type="aiplatform.googleapis.com/agent_engine/request_latencies"
+          aggregations:
+            - alignment_period: "300s"
+              per_series_aligner: ALIGN_PERCENTILE_99
+              cross_series_reducer: REDUCE_MAX
+          comparison: COMPARISON_GT
+          threshold_value: 10000  # 10 seconds in ms
+          duration: "300s"
+    combiner: OR
+    notification_channel_strategy:
+      notification_channel_filter: "type='slack'"
+    severity: WARNING
+
+  # Service Down Alert (No requests for 5 minutes)
+  - display_name: "Agent Engine - Service Down"
+    documentation:
+      content: |
+        ## Alert: Service Down
+
+        No requests received for 5 minutes. The service may be down.
+
+        ### Investigation Steps
+        1. Check deployment status
+        2. Verify network connectivity
+        3. Check for infrastructure issues
+
+        ### Immediate Actions
+        1. Check health endpoint
+        2. Review recent changes
+        3. Consider rollback if recent deployment
+
+        ### Runbook
+        See docs/RUNBOOK.md#service-down
+    conditions:
+      - display_name: "No requests for 5 minutes"
+        condition_absent:
+          filter: |
+            resource.type="aiplatform.googleapis.com/AgentEngine"
+            metric.type="aiplatform.googleapis.com/agent_engine/request_count"
+          aggregations:
+            - alignment_period: "60s"
+              per_series_aligner: ALIGN_RATE
+          duration: "300s"  # 5 minutes
+    combiner: OR
+    notification_channel_strategy:
+      notification_channel_filter: "type='pagerduty' OR type='email'"
+    severity: CRITICAL
+
+  # Memory Bank Error Alert
+  - display_name: "Agent Engine - Memory Bank Errors"
+    documentation:
+      content: |
+        ## Alert: Memory Bank Errors
+
+        Memory Bank operations are failing.
+
+        ### Investigation Steps
+        1. Check Memory Bank API status
+        2. Review quota usage
+        3. Check for data corruption
+
+        ### Runbook
+        See docs/RUNBOOK.md#memory-bank-errors
+    conditions:
+      - display_name: "Memory Bank error rate > 10%"
+        condition_threshold:
+          filter: |
+            resource.type="aiplatform.googleapis.com/AgentEngine"
+            metric.type="custom.googleapis.com/agent_engine/memory_operation_errors"
+          aggregations:
+            - alignment_period: "300s"
+              per_series_aligner: ALIGN_RATE
+          comparison: COMPARISON_GT
+          threshold_value: 0.1  # 10%
+          duration: "300s"
+    combiner: OR
+    severity: WARNING
+
+  # Session Management Alert
+  - display_name: "Agent Engine - Session Failures"
+    documentation:
+      content: |
+        ## Alert: Session Management Failures
+
+        Session operations (create/get/delete) are failing.
+
+        ### Investigation Steps
+        1. Check Sessions API status
+        2. Review session TTL settings
+        3. Check for quota issues
+
+        ### Runbook
+        See docs/RUNBOOK.md#session-failures
+    conditions:
+      - display_name: "Session error rate > 5%"
+        condition_threshold:
+          filter: |
+            resource.type="aiplatform.googleapis.com/AgentEngine"
+            metric.type="custom.googleapis.com/agent_engine/session_operation_errors"
+          aggregations:
+            - alignment_period: "300s"
+              per_series_aligner: ALIGN_RATE
+          comparison: COMPARISON_GT
+          threshold_value: 0.05
+          duration: "300s"
+    combiner: OR
+    severity: WARNING
+
+  # Token Usage Alert (Cost Control)
+  - display_name: "Agent Engine - High Token Usage"
+    documentation:
+      content: |
+        ## Alert: High Token Usage
+
+        Token consumption is unusually high, which may indicate cost issues.
+
+        ### Investigation Steps
+        1. Review recent traffic patterns
+        2. Check for runaway requests
+        3. Analyze prompt/response sizes
+
+        ### Runbook
+        See docs/RUNBOOK.md#high-token-usage
+    conditions:
+      - display_name: "Token usage spike"
+        condition_threshold:
+          filter: |
+            resource.type="aiplatform.googleapis.com/AgentEngine"
+            metric.type="custom.googleapis.com/agent_engine/token_usage"
+          aggregations:
+            - alignment_period: "3600s"  # 1 hour
+              per_series_aligner: ALIGN_SUM
+          comparison: COMPARISON_GT
+          threshold_value: 1000000  # 1M tokens/hour
+          duration: "0s"
+    combiner: OR
+    notification_channel_strategy:
+      notification_channel_filter: "type='email'"
+    severity: WARNING
+
+  # Security Alert - Unauthorized Access Attempts
+  - display_name: "Agent Engine - Security: Unauthorized Access"
+    documentation:
+      content: |
+        ## Alert: Unauthorized Access Attempts
+
+        Multiple unauthorized access attempts detected.
+
+        ### Immediate Actions
+        1. Review audit logs
+        2. Check for compromised credentials
+        3. Consider blocking suspicious IPs
+
+        ### Runbook
+        See docs/RUNBOOK.md#security-incident
+    conditions:
+      - display_name: "Unauthorized access > 10/min"
+        condition_threshold:
+          filter: |
+            resource.type="audited_resource"
+            protoPayload.serviceName="aiplatform.googleapis.com"
+            protoPayload.status.code="7"
+          aggregations:
+            - alignment_period: "60s"
+              per_series_aligner: ALIGN_RATE
+          comparison: COMPARISON_GT
+          threshold_value: 10
+          duration: "60s"
+    combiner: OR
+    notification_channel_strategy:
+      notification_channel_filter: "type='pagerduty'"
+    severity: CRITICAL
+
+# Uptime checks
+uptime_checks:
+  - display_name: "Agent Engine Health Check"
+    monitored_resource:
+      type: uptime_url
+      labels:
+        host: "${AGENT_ENGINE_ENDPOINT}"
+        project_id: "${PROJECT_ID}"
+    http_check:
+      path: "/health"
+      port: 443
+      use_ssl: true
+      validate_ssl: true
+      request_method: GET
+      accepted_response_status_codes:
+        - status_class: STATUS_CLASS_2XX
+    period: "60s"
+    timeout: "10s"
+    selected_regions:
+      - ASIA_PACIFIC
+      - USA

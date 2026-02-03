@@ -308,6 +308,82 @@ mosaicLayout:
             label: Requests/sec
             scale: LINEAR
 
+    # Row 6: Security Metrics (Phase 3)
+    - yPos: 20
+      width: 4
+      height: 4
+      widget:
+        title: Authentication Failures
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: |
+                    resource.type="audited_resource"
+                    protoPayload.serviceName="aiplatform.googleapis.com"
+                    protoPayload.status.code="7"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+              plotType: LINE
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Failures/sec
+            scale: LINEAR
+          thresholds:
+            - value: 10
+              color: RED
+              direction: ABOVE
+
+    - xPos: 4
+      yPos: 20
+      width: 4
+      height: 4
+      widget:
+        title: VPC-SC Violations
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: |
+                    resource.type="audited_resource"
+                    protoPayload.metadata.@type="type.googleapis.com/google.cloud.audit.VpcServiceControlAuditMetadata"
+                  aggregation:
+                    alignmentPeriod: "300s"
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+              plotType: LINE
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Violations/5min
+            scale: LINEAR
+
+    - xPos: 8
+      yPos: 20
+      width: 4
+      height: 4
+      widget:
+        title: Service Account Activity
+        xyChart:
+          dataSets:
+            - timeSeriesQuery:
+                timeSeriesFilter:
+                  filter: |
+                    resource.type="audited_resource"
+                    protoPayload.serviceName="aiplatform.googleapis.com"
+                  aggregation:
+                    alignmentPeriod: "60s"
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+                    groupByFields:
+                      - protoPayload.authenticationInfo.principalEmail
+              plotType: STACKED_AREA
+          timeshiftDuration: "0s"
+          yAxis:
+            label: Operations/sec
+            scale: LINEAR
+
 ---
 # Alert Policies (Optional - can be deployed separately)
 #

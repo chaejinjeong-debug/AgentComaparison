@@ -1,0 +1,105 @@
+# IAM Role Bindings for AgentEngine
+# Phase 3: Security & Production
+
+# Project-level bindings
+project_bindings:
+  # Production environment bindings
+  production:
+    project_id: "${PRODUCTION_PROJECT_ID}"
+    bindings:
+      # Runtime service account bindings
+      - role: roles/aiplatform.user
+        members:
+          - serviceAccount:agent-engine-runtime@${PRODUCTION_PROJECT_ID}.iam.gserviceaccount.com
+
+      - role: roles/logging.logWriter
+        members:
+          - serviceAccount:agent-engine-runtime@${PRODUCTION_PROJECT_ID}.iam.gserviceaccount.com
+
+      - role: roles/cloudtrace.agent
+        members:
+          - serviceAccount:agent-engine-runtime@${PRODUCTION_PROJECT_ID}.iam.gserviceaccount.com
+
+      - role: roles/monitoring.metricWriter
+        members:
+          - serviceAccount:agent-engine-runtime@${PRODUCTION_PROJECT_ID}.iam.gserviceaccount.com
+
+      # Deployer service account bindings
+      - role: roles/aiplatform.admin
+        members:
+          - serviceAccount:agent-engine-deployer@${PRODUCTION_PROJECT_ID}.iam.gserviceaccount.com
+
+      - role: roles/iam.serviceAccountUser
+        members:
+          - serviceAccount:agent-engine-deployer@${PRODUCTION_PROJECT_ID}.iam.gserviceaccount.com
+        condition:
+          title: "Act as Runtime SA Only"
+          expression: |
+            resource.name == "projects/${PRODUCTION_PROJECT_ID}/serviceAccounts/agent-engine-runtime@${PRODUCTION_PROJECT_ID}.iam.gserviceaccount.com"
+
+  # Staging environment bindings
+  staging:
+    project_id: "${STAGING_PROJECT_ID}"
+    bindings:
+      # Similar bindings with staging project
+      - role: roles/aiplatform.user
+        members:
+          - serviceAccount:agent-engine-runtime@${STAGING_PROJECT_ID}.iam.gserviceaccount.com
+
+      - role: roles/logging.logWriter
+        members:
+          - serviceAccount:agent-engine-runtime@${STAGING_PROJECT_ID}.iam.gserviceaccount.com
+
+      # Developer access for staging
+      - role: roles/aiplatform.admin
+        members:
+          - group:developers@your-domain.com
+        condition:
+          title: "Staging Only"
+          expression: |
+            resource.type == "aiplatform.googleapis.com/AgentEngine"
+
+# Resource-level bindings (Agent Engine specific)
+resource_bindings:
+  agent_engine:
+    # Binding for invoking the agent
+    - role: roles/aiplatform.user
+      members:
+        - serviceAccount:agent-engine-runtime@${PROJECT_ID}.iam.gserviceaccount.com
+        - allAuthenticatedUsers  # Remove for private access
+
+# Custom roles (for fine-grained permissions)
+custom_roles:
+  - id: agentEngineInvoker
+    title: "Agent Engine Invoker"
+    description: "Can invoke Agent Engine but not manage"
+    permissions:
+      - aiplatform.agentEngines.get
+      - aiplatform.agentEngines.query
+      - aiplatform.sessions.create
+      - aiplatform.sessions.get
+      - aiplatform.sessions.appendEvent
+      - aiplatform.memories.create
+      - aiplatform.memories.retrieve
+
+  - id: agentEngineOperator
+    title: "Agent Engine Operator"
+    description: "Can operate Agent Engine including deployment"
+    permissions:
+      - aiplatform.agentEngines.*
+      - aiplatform.sessions.*
+      - aiplatform.memories.*
+
+# Deny policies (block dangerous operations)
+deny_policies:
+  - name: prevent-public-access
+    display_name: "Prevent Public Access"
+    rules:
+      - deny_rule:
+          denied_principals:
+            - allUsers
+            - allAuthenticatedUsers
+          denied_permissions:
+            - aiplatform.agentEngines.create
+            - aiplatform.agentEngines.delete
+          exception_principals: []

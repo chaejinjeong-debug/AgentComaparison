@@ -1,0 +1,181 @@
+# Cloud Build CI/CD Pipeline for AgentEngine
+# Phase 3: Production Readiness
+
+steps:
+  # Step 1: Install uv package manager
+  - id: 'install-uv'
+    name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install uv
+        uv --version
+    waitFor: ['-']
+
+  # Step 2: Install dependencies
+  - id: 'install-deps'
+    name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install uv
+        uv venv .venv
+        . .venv/bin/activate
+        uv pip install -e ".[dev]"
+    dir: 'AgentEngine'
+    waitFor: ['install-uv']
+
+  # Step 3: Lint check (ruff)
+  - id: 'lint'
+    name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install uv
+        . .venv/bin/activate
+        echo "=== Running ruff check ==="
+        ruff check src/ scripts/
+        echo "=== Running ruff format check ==="
+        ruff format --check src/ scripts/
+    dir: 'AgentEngine'
+    waitFor: ['install-deps']
+
+  # Step 4: Type check (mypy)
+  - id: 'typecheck'
+    name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install uv
+        . .venv/bin/activate
+        echo "=== Running mypy ==="
+        mypy src/ --ignore-missing-imports
+    dir: 'AgentEngine'
+    waitFor: ['install-deps']
+
+  # Step 5: Security scan (bandit)
+  - id: 'security'
+    name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install uv
+        . .venv/bin/activate
+        echo "=== Running bandit security scan ==="
+        bandit -r src/ -ll -ii
+    dir: 'AgentEngine'
+    waitFor: ['install-deps']
+
+  # Step 6: Run tests with coverage
+  - id: 'test'
+    name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install uv
+        . .venv/bin/activate
+        echo "=== Running pytest with coverage ==="
+        pytest tests/ \
+          --cov=src/agent_engine \
+          --cov-report=xml:coverage.xml \
+          --cov-report=html:coverage_html \
+          --cov-report=term-missing \
+          --cov-fail-under=80 \
+          -v
+    dir: 'AgentEngine'
+    waitFor: ['lint', 'typecheck', 'security']
+
+  # Step 7: Run quality checks script
+  - id: 'quality-gate'
+    name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install uv
+        . .venv/bin/activate
+        echo "=== Running quality gate checks ==="
+        python scripts/ci/run_quality_checks.py
+    dir: 'AgentEngine'
+    waitFor: ['test']
+
+  # Step 8: Deploy to staging (conditional - only on main branch)
+  - id: 'deploy-staging'
+    name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "$BRANCH_NAME" = "main" ] || [ "$BRANCH_NAME" = "develop" ]; then
+          pip install uv
+          . .venv/bin/activate
+          echo "=== Deploying to staging ==="
+          python scripts/deploy_source.py --env staging
+        else
+          echo "Skipping staging deployment for branch: $BRANCH_NAME"
+        fi
+    dir: 'AgentEngine'
+    waitFor: ['quality-gate']
+
+  # Step 9: Run evaluation tests (conditional - only on main branch)
+  - id: 'evaluation'
+    name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "$BRANCH_NAME" = "main" ]; then
+          pip install uv
+          . .venv/bin/activate
+          echo "=== Running agent evaluation ==="
+          python scripts/evaluation/run_evaluation.py --threshold 0.85 || echo "Evaluation skipped or failed"
+        else
+          echo "Skipping evaluation for branch: $BRANCH_NAME"
+        fi
+    dir: 'AgentEngine'
+    waitFor: ['deploy-staging']
+
+  # Step 10: Deploy to production (conditional - only on tagged releases)
+  - id: 'deploy-production'
+    name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ -n "$TAG_NAME" ]; then
+          pip install uv
+          . .venv/bin/activate
+          echo "=== Deploying to production: $TAG_NAME ==="
+          python scripts/deploy_source.py --env production
+          python scripts/version/register.py --version "$TAG_NAME"
+        else
+          echo "Skipping production deployment (no tag)"
+        fi
+    dir: 'AgentEngine'
+    waitFor: ['evaluation']
+
+# Build artifacts
+artifacts:
+  objects:
+    location: 'gs://${PROJECT_ID}-cloudbuild-artifacts/agent-engine/${BUILD_ID}'
+    paths:
+      - 'AgentEngine/coverage.xml'
+      - 'AgentEngine/coverage_html/**'
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_MEDIUM'
+
+# Timeout
+timeout: '1800s'
+
+# Substitutions (can be overridden)
+substitutions:
+  _DEPLOY_ENV: 'staging'

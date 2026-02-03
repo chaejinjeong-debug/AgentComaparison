@@ -99,6 +99,41 @@ class ObservabilityConfig(BaseModel):
     )
 
 
+class EvaluationConfig(BaseModel):
+    """Configuration for Agent Evaluation (Phase 3).
+
+    Attributes:
+        enabled: Enable evaluation in CI/CD
+        quality_threshold: Minimum accuracy threshold (0.0-1.0)
+        p50_threshold_ms: Maximum P50 latency in milliseconds
+        p99_threshold_ms: Maximum P99 latency in milliseconds
+        error_rate_threshold: Maximum acceptable error rate
+        test_data_path: Path to golden test data
+        timeout_seconds: Default timeout per test case
+    """
+
+    enabled: bool = Field(default=True, description="Enable evaluation")
+    quality_threshold: float = Field(
+        default=0.85, ge=0.0, le=1.0, description="Minimum accuracy threshold"
+    )
+    p50_threshold_ms: float = Field(
+        default=2000.0, gt=0, description="Maximum P50 latency (ms)"
+    )
+    p99_threshold_ms: float = Field(
+        default=10000.0, gt=0, description="Maximum P99 latency (ms)"
+    )
+    error_rate_threshold: float = Field(
+        default=0.05, ge=0.0, le=1.0, description="Maximum error rate"
+    )
+    test_data_path: str = Field(
+        default="tests/evaluation/golden/qa_pairs.json",
+        description="Path to test data file",
+    )
+    timeout_seconds: float = Field(
+        default=30.0, gt=0, description="Default timeout per test"
+    )
+
+
 class AgentConfig(BaseModel):
     """Configuration for the Pydantic AI Agent.
 
@@ -139,6 +174,9 @@ class AgentConfig(BaseModel):
     session: SessionConfig = Field(default_factory=SessionConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
+
+    # Phase 3 configurations
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
 
     @field_validator("log_level")
     @classmethod
@@ -218,6 +256,19 @@ class AgentConfig(BaseModel):
             sample_rate=float(os.getenv("TRACE_SAMPLE_RATE", "1.0")),
         )
 
+        # Evaluation configuration (Phase 3)
+        evaluation_config = EvaluationConfig(
+            enabled=os.getenv("EVALUATION_ENABLED", "true").lower() == "true",
+            quality_threshold=float(os.getenv("EVALUATION_QUALITY_THRESHOLD", "0.85")),
+            p50_threshold_ms=float(os.getenv("EVALUATION_P50_THRESHOLD_MS", "2000.0")),
+            p99_threshold_ms=float(os.getenv("EVALUATION_P99_THRESHOLD_MS", "10000.0")),
+            error_rate_threshold=float(os.getenv("EVALUATION_ERROR_RATE_THRESHOLD", "0.05")),
+            test_data_path=os.getenv(
+                "EVALUATION_TEST_DATA_PATH", "tests/evaluation/golden/qa_pairs.json"
+            ),
+            timeout_seconds=float(os.getenv("EVALUATION_TIMEOUT_SECONDS", "30.0")),
+        )
+
         return cls(
             project_id=os.getenv("AGENT_PROJECT_ID", ""),
             location=os.getenv("AGENT_LOCATION", "asia-northeast3"),
@@ -234,6 +285,7 @@ class AgentConfig(BaseModel):
             session=session_config,
             memory=memory_config,
             observability=observability_config,
+            evaluation=evaluation_config,
         )
 
     def to_dict(self) -> dict[str, Any]:
