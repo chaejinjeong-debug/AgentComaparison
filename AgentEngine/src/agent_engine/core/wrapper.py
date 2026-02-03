@@ -1,193 +1,143 @@
-"""Pydantic AI Agent Wrapper for VertexAI Agent Engine.
+"""Agent Engine Wrapper for deployment orchestration.
 
-This module provides a wrapper class that integrates Pydantic AI with
-VertexAI Agent Engine, conforming to the Agent Engine specification.
-
-Requirements implemented:
-- AC-001: Agent Engine specification compliance (__init__, set_up, query)
-- AC-002: Pydantic AI Agent wrapping
-- AC-003: GoogleProvider for Gemini model integration
-- AC-004: Sync/Async query support
-- AC-006: Error handling with graceful degradation
-- TS-001: Tool registration mechanism
-
-Phase 2 additions:
-- SM-001~005: Session management integration
-- MB-001~006: Memory bank integration
-- OB-001~003: Observability integration
-
-This module now serves as a Facade over the refactored core components:
-- PydanticAIAgent: Handles Pydantic AI specific logic
-- AgentEngineWrapper: Handles deployment/orchestration logic
-- MessageBuilder: Handles message composition
-- ResultProcessor: Handles result processing
+This module provides the AgentEngineWrapper class which handles
+deployment-related concerns: session management, memory, observability,
+and metrics recording while delegating actual query execution to
+a BaseAgent implementation.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from agent_engine.config import AgentConfig
+from agent_engine.core.base_agent import BaseAgent
 from agent_engine.core.message_builder import MessageBuilder
-from agent_engine.core.pydantic_agent import PydanticAIAgent
 from agent_engine.core.result_processor import ResultProcessor
-from agent_engine.core.wrapper import StreamChunk
 from agent_engine.exceptions import AgentConfigError, AgentQueryError, ToolExecutionError
+
+if TYPE_CHECKING:
+    from agent_engine.config import AgentConfig
 
 logger = structlog.get_logger()
 
-# Re-export StreamChunk for backward compatibility
-__all__ = ["PydanticAIAgentWrapper", "StreamChunk"]
 
-
-class PydanticAIAgentWrapper:
-    """VertexAI Agent Engine compliant wrapper for Pydantic AI Agent.
-
-    This class wraps a Pydantic AI Agent to conform to the VertexAI Agent Engine
-    specification, providing the required __init__, set_up, and query methods.
-
-    This is a Facade that internally uses:
-    - PydanticAIAgent: For LLM interactions
-    - MessageBuilder: For message composition
-    - ResultProcessor: For result handling
+@dataclass
+class StreamChunk:
+    """Represents a single chunk in the streaming response.
 
     Attributes:
-        model: Gemini model name (e.g., "gemini-2.5-pro")
+        chunk: The text content of this chunk
+        done: Whether this is the final chunk
+        tool_call: Optional tool call information if a tool was invoked
+        metadata: Optional metadata about the chunk
+    """
+
+    chunk: str
+    done: bool = False
+    tool_call: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class AgentEngineWrapper:
+    """Deployment wrapper conforming to VertexAI Agent Engine specification.
+
+    This class wraps any BaseAgent implementation to provide:
+    - Agent Engine spec compliance (__init__, set_up, query)
+    - Session management integration
+    - Memory bank integration
+    - Observability (tracing, logging, metrics)
+    - Query orchestration
+
+    The wrapper delegates actual LLM interactions to the provided
+    BaseAgent implementation, focusing on infrastructure concerns.
+
+    Attributes:
+        agent: The BaseAgent implementation to wrap
+        config: Full agent configuration
         project: GCP project ID
-        location: GCP region (e.g., "asia-northeast3")
-        system_prompt: System prompt for the agent
-        tools: Sequence of tool functions to register
-        temperature: Model temperature setting
-        max_tokens: Maximum output tokens
+        location: GCP region
 
     Example:
-        >>> agent = PydanticAIAgentWrapper(
-        ...     model="gemini-2.5-pro",
+        >>> from agent_engine.core import AgentEngineWrapper, PydanticAIAgent
+        >>>
+        >>> agent = PydanticAIAgent(model="gemini-2.5-pro", tools=[my_tool])
+        >>> wrapper = AgentEngineWrapper(
+        ...     agent=agent,
         ...     project="my-project",
         ...     location="asia-northeast3",
-        ...     system_prompt="You are a helpful assistant.",
-        ...     tools=[search_tool, calculate_tool],
         ... )
-        >>> agent.set_up()
-        >>> response = agent.query(message="Hello!")
+        >>> wrapper.set_up()
+        >>> response = wrapper.query(message="Hello!")
     """
 
     def __init__(
         self,
-        model: str = "gemini-2.5-pro",
+        agent: BaseAgent,
         project: str = "",
         location: str = "asia-northeast3",
-        system_prompt: str = "You are a helpful AI assistant.",
-        tools: Sequence[Callable[..., Any]] | None = None,
-        temperature: float = 0.7,
-        max_tokens: int = 4096,
         config: AgentConfig | None = None,
     ) -> None:
-        """Initialize the agent wrapper with configuration parameters.
+        """Initialize the Agent Engine wrapper.
 
         Args:
-            model: Gemini model name
+            agent: BaseAgent implementation to wrap
             project: GCP project ID
             location: GCP region
-            system_prompt: System prompt for the agent
-            tools: Sequence of tool functions to register
-            temperature: Model temperature (0.0-2.0)
-            max_tokens: Maximum output tokens
             config: Optional full AgentConfig for Phase 2 features
         """
-        self.model_name = model
+        self.agent = agent
         self.project = project
         self.location = location
-        self.system_prompt = system_prompt
-        self.tools = list(tools) if tools else []
-        self.temperature = temperature
-        self.max_tokens = max_tokens
         self.config = config
 
-        # Core components (initialized lazily)
-        self._pydantic_agent: PydanticAIAgent | None = None
-        self._message_builder = MessageBuilder()
-        self._result_processor: ResultProcessor | None = None
-
         # Will be initialized in set_up()
-        self._agent: Any = None  # Keep for backward compatibility
         self._is_setup = False
 
-        # Phase 2: Session and Memory managers
+        # Phase 2: Managers
         self._session_manager: Any = None
         self._memory_manager: Any = None
         self._tracing_manager: Any = None
         self._metrics_manager: Any = None
         self._logging_manager: Any = None
 
+        # Utilities
+        self._message_builder = MessageBuilder()
+        self._result_processor: ResultProcessor | None = None
+
         logger.info(
-            "agent_wrapper_initialized",
-            model=model,
+            "agent_engine_wrapper_initialized",
+            agent_type=type(agent).__name__,
             project=project,
             location=location,
-            tool_count=len(self.tools),
-        )
-
-    @classmethod
-    def from_config(
-        cls, config: AgentConfig, tools: Sequence[Callable[..., Any]] | None = None
-    ) -> PydanticAIAgentWrapper:
-        """Create an agent wrapper from an AgentConfig instance.
-
-        Args:
-            config: AgentConfig instance
-            tools: Optional sequence of tool functions
-
-        Returns:
-            PydanticAIAgentWrapper instance
-        """
-        return cls(
-            model=config.model,
-            project=config.project_id,
-            location=config.location,
-            system_prompt=config.system_prompt,
-            tools=tools,
-            temperature=config.temperature,
-            max_tokens=config.max_tokens,
-            config=config,
         )
 
     def set_up(self) -> None:
-        """Initialize the Pydantic AI Agent and connect to VertexAI.
+        """Initialize the agent and all managers.
 
-        This method performs:
-        - VertexAI initialization
-        - GoogleProvider configuration
-        - Pydantic AI Agent creation with tools
-        - Phase 2: Session, Memory, and Observability setup
+        This method:
+        - Initializes the wrapped agent
+        - Sets up observability (tracing, logging, metrics)
+        - Sets up session manager
+        - Sets up memory manager
 
         Raises:
             AgentConfigError: If initialization fails
         """
         try:
-            # Create and initialize PydanticAIAgent
-            self._pydantic_agent = PydanticAIAgent(
-                model=self.model_name,
-                system_prompt=self.system_prompt,
-                tools=self.tools,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
-            self._pydantic_agent.initialize(
+            # Initialize the wrapped agent
+            self.agent.initialize(
                 project=self.project,
                 location=self.location,
                 config=self.config,
             )
 
-            # Keep reference for backward compatibility
-            self._agent = self._pydantic_agent._agent
-
-            # Initialize result processor
-            self._result_processor = ResultProcessor(self.model_name)
+            # Initialize result processor with model name
+            self._result_processor = ResultProcessor(self.agent.model_name)
 
             # Phase 2: Initialize observability
             self._setup_observability()
@@ -201,18 +151,18 @@ class PydanticAIAgentWrapper:
             self._is_setup = True
 
             logger.info(
-                "agent_setup_complete",
-                model=self.model_name,
-                tool_count=len(self.tools),
+                "agent_engine_wrapper_setup_complete",
+                model=self.agent.model_name,
+                tool_count=len(self.agent.tools),
                 session_enabled=self._session_manager is not None,
                 memory_enabled=self._memory_manager is not None,
             )
 
-        except AgentConfigError:
-            raise
         except Exception as e:
+            if isinstance(e, AgentConfigError):
+                raise
             raise AgentConfigError(
-                f"Failed to set up agent: {e}",
+                f"Failed to set up wrapper: {e}",
                 details={"error_type": type(e).__name__},
             ) from e
 
@@ -297,10 +247,10 @@ class PydanticAIAgentWrapper:
             logger.warning("memory_manager_setup_failed", error=str(e))
 
     def _ensure_setup(self) -> None:
-        """Ensure the agent has been set up."""
-        if not self._is_setup or self._pydantic_agent is None:
+        """Ensure the wrapper has been set up."""
+        if not self._is_setup:
             raise AgentConfigError(
-                "Agent not set up. Call set_up() before querying.",
+                "Wrapper not set up. Call set_up() before querying.",
                 details={"is_setup": self._is_setup},
             )
 
@@ -322,11 +272,7 @@ class PydanticAIAgentWrapper:
             memories: Optional list of retrieved memories
 
         Returns:
-            Dictionary containing:
-                - response: Agent response text
-                - tool_calls: List of executed tools
-                - usage: Token usage information
-                - metadata: Query metadata
+            Response dictionary
 
         Raises:
             AgentQueryError: If the query fails
@@ -345,22 +291,24 @@ class PydanticAIAgentWrapper:
                 from agent_engine.tools.memory_tools import set_current_user
                 set_current_user(user_id)
 
-            # Retrieve memories if memory manager is available
+            # Retrieve memories if needed
             if memories is None and self._memory_manager and user_id:
                 memories = self._get_user_memories(user_id, message)
 
-            # Retrieve session history if session_id is provided
+            # Retrieve session history if needed
             session_history = None
             if session_id and self._session_manager:
                 session_history = self._get_session_history_sync(session_id)
 
-            # Build the full message with context
-            full_message = self._build_message(message, context, memories, session_history)
+            # Build the full message
+            full_message = self._message_builder.build(
+                message, context, memories, session_history
+            )
 
-            # Run the agent synchronously using PydanticAIAgent
-            result = self._pydantic_agent.run_sync(full_message)
+            # Run the agent
+            result = self.agent.run_sync(full_message)
 
-            # Process result using ResultProcessor
+            # Process result
             response_data = self._result_processor.process(
                 result=result,
                 user_id=user_id,
@@ -369,21 +317,13 @@ class PydanticAIAgentWrapper:
             )
 
             # Record metrics
-            latency_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
-            if self._metrics_manager:
-                self._metrics_manager.record_latency(latency_ms, method="query")
-                if "usage" in response_data and response_data["usage"]:
-                    self._metrics_manager.record_tokens(
-                        input_tokens=response_data["usage"].get("prompt_tokens", 0),
-                        output_tokens=response_data["usage"].get("completion_tokens", 0),
-                        model=self.model_name,
-                    )
+            self._record_metrics(response_data, start_time, "query")
 
             logger.info(
                 "query_completed",
                 user_id=user_id,
                 session_id=session_id,
-                latency_ms=latency_ms,
+                latency_ms=response_data["metadata"]["latency_ms"],
             )
 
             return response_data
@@ -391,10 +331,6 @@ class PydanticAIAgentWrapper:
         except ToolExecutionError:
             if self._metrics_manager:
                 self._metrics_manager.record_error("ToolExecutionError", method="query")
-            raise
-        except AgentQueryError:
-            if self._metrics_manager:
-                self._metrics_manager.record_error("AgentQueryError", method="query")
             raise
         except Exception as e:
             if self._metrics_manager:
@@ -406,6 +342,8 @@ class PydanticAIAgentWrapper:
                 error=str(e),
                 error_type=type(e).__name__,
             )
+            if isinstance(e, AgentQueryError):
+                raise
             raise AgentQueryError(
                 f"Query failed: {e}",
                 user_id=user_id,
@@ -431,11 +369,7 @@ class PydanticAIAgentWrapper:
             memories: Optional list of retrieved memories
 
         Returns:
-            Dictionary containing:
-                - response: Agent response text
-                - tool_calls: List of executed tools
-                - usage: Token usage information
-                - metadata: Query metadata
+            Response dictionary
 
         Raises:
             AgentQueryError: If the query fails
@@ -454,22 +388,24 @@ class PydanticAIAgentWrapper:
                 from agent_engine.tools.memory_tools import set_current_user
                 set_current_user(user_id)
 
-            # Retrieve memories if memory manager is available
+            # Retrieve memories if needed
             if memories is None and self._memory_manager and user_id:
                 memories = await self._aget_user_memories(user_id, message)
 
-            # Retrieve session history if session_id is provided
+            # Retrieve session history if needed
             session_history = None
             if session_id and self._session_manager:
                 session_history = await self._aget_session_history(session_id)
 
-            # Build the full message with context
-            full_message = self._build_message(message, context, memories, session_history)
+            # Build the full message
+            full_message = self._message_builder.build(
+                message, context, memories, session_history
+            )
 
-            # Run the agent asynchronously using PydanticAIAgent
-            result = await self._pydantic_agent.run_async(full_message)
+            # Run the agent
+            result = await self.agent.run_async(full_message)
 
-            # Process result using ResultProcessor
+            # Process result
             response_data = self._result_processor.process(
                 result=result,
                 user_id=user_id,
@@ -478,21 +414,13 @@ class PydanticAIAgentWrapper:
             )
 
             # Record metrics
-            latency_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
-            if self._metrics_manager:
-                self._metrics_manager.record_latency(latency_ms, method="aquery")
-                if "usage" in response_data and response_data["usage"]:
-                    self._metrics_manager.record_tokens(
-                        input_tokens=response_data["usage"].get("prompt_tokens", 0),
-                        output_tokens=response_data["usage"].get("completion_tokens", 0),
-                        model=self.model_name,
-                    )
+            self._record_metrics(response_data, start_time, "aquery")
 
             logger.info(
                 "async_query_completed",
                 user_id=user_id,
                 session_id=session_id,
-                latency_ms=latency_ms,
+                latency_ms=response_data["metadata"]["latency_ms"],
             )
 
             return response_data
@@ -500,10 +428,6 @@ class PydanticAIAgentWrapper:
         except ToolExecutionError:
             if self._metrics_manager:
                 self._metrics_manager.record_error("ToolExecutionError", method="aquery")
-            raise
-        except AgentQueryError:
-            if self._metrics_manager:
-                self._metrics_manager.record_error("AgentQueryError", method="aquery")
             raise
         except Exception as e:
             if self._metrics_manager:
@@ -515,8 +439,118 @@ class PydanticAIAgentWrapper:
                 error=str(e),
                 error_type=type(e).__name__,
             )
+            if isinstance(e, AgentQueryError):
+                raise
             raise AgentQueryError(
                 f"Async query failed: {e}",
+                user_id=user_id,
+                session_id=session_id,
+                details={"error_type": type(e).__name__},
+            ) from e
+
+    async def stream_query(
+        self,
+        message: str,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        context: dict[str, Any] | None = None,
+        memories: list[str] | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Execute a streaming query against the agent.
+
+        Args:
+            message: User message to process
+            user_id: Optional user identifier
+            session_id: Optional session identifier
+            context: Optional additional context
+            memories: Optional list of retrieved memories
+
+        Yields:
+            StreamChunk objects
+
+        Raises:
+            AgentQueryError: If the streaming query fails
+        """
+        self._ensure_setup()
+
+        start_time = datetime.now(UTC)
+
+        # Record request metric
+        if self._metrics_manager:
+            self._metrics_manager.record_request(method="stream_query", user_id=user_id)
+
+        try:
+            # Set user context for memory tools
+            if user_id:
+                from agent_engine.tools.memory_tools import set_current_user
+                set_current_user(user_id)
+
+            # Retrieve memories if needed
+            if memories is None and self._memory_manager and user_id:
+                memories = await self._aget_user_memories(user_id, message)
+
+            # Retrieve session history if needed
+            session_history = None
+            if session_id and self._session_manager:
+                session_history = await self._aget_session_history(session_id)
+
+            # Build the full message
+            full_message = self._message_builder.build(
+                message, context, memories, session_history
+            )
+
+            # Track tool calls
+            tool_calls: list[dict[str, Any]] = []
+
+            # Stream from agent
+            async for text, final_result in self.agent.run_stream(full_message):
+                if final_result is not None:
+                    # Extract tool calls from final result
+                    tool_calls = final_result.tool_calls
+                    for tc in tool_calls:
+                        yield StreamChunk(chunk="", done=False, tool_call=tc)
+                else:
+                    yield StreamChunk(chunk=text, done=False)
+
+            # Record metrics
+            latency_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
+            if self._metrics_manager:
+                self._metrics_manager.record_latency(latency_ms, method="stream_query")
+
+            # Yield final chunk with metadata
+            yield StreamChunk(
+                chunk="",
+                done=True,
+                metadata=ResultProcessor.create_stream_metadata(
+                    model_name=self.agent.model_name,
+                    user_id=user_id,
+                    session_id=session_id,
+                    latency_ms=latency_ms,
+                    tool_calls=tool_calls,
+                ),
+            )
+
+            logger.info(
+                "stream_query_completed",
+                user_id=user_id,
+                session_id=session_id,
+                latency_ms=latency_ms,
+            )
+
+        except Exception as e:
+            if self._metrics_manager:
+                self._metrics_manager.record_error(type(e).__name__, method="stream_query")
+            logger.error(
+                "stream_query_failed",
+                user_id=user_id,
+                session_id=session_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            if isinstance(e, AgentQueryError):
+                raise
+            raise AgentQueryError(
+                f"Stream query failed: {e}",
                 user_id=user_id,
                 session_id=session_id,
                 details={"error_type": type(e).__name__},
@@ -531,22 +565,14 @@ class PydanticAIAgentWrapper:
     ) -> dict[str, Any]:
         """Execute a query with automatic session management.
 
-        This method:
-        1. Creates or retrieves a session
-        2. Records the user message as an event
-        3. Retrieves relevant memories
-        4. Executes the query
-        5. Records the response as an event
-        6. Optionally generates new memories
-
         Args:
             message: User message to process
-            user_id: User identifier (required for session)
+            user_id: User identifier (required)
             session_id: Optional existing session ID
             context: Optional additional context
 
         Returns:
-            Dictionary with response data and session_id
+            Response dictionary with session_id
 
         Raises:
             AgentQueryError: If the query fails
@@ -554,7 +580,6 @@ class PydanticAIAgentWrapper:
         self._ensure_setup()
 
         if self._session_manager is None:
-            # Fallback to regular query if sessions disabled
             return await self.aquery(message=message, user_id=user_id, context=context)
 
         from agent_engine.sessions import EventAuthor
@@ -563,7 +588,6 @@ class PydanticAIAgentWrapper:
         if session_id:
             session = await self._session_manager.get_session(session_id)
             if session is None:
-                # Session expired or not found, create new one
                 session = await self._session_manager.create_session(user_id)
         else:
             session = await self._session_manager.create_session(user_id)
@@ -601,138 +625,12 @@ class PydanticAIAgentWrapper:
             },
         )
 
-        # Generate memories from session (if auto-generate enabled)
+        # Generate memories from session
         if self._memory_manager and self.config and self.config.memory.auto_generate:
             await self._memory_manager.generate_from_session(session, user_id)
 
-        # Update metrics
-        if self._metrics_manager:
-            self._metrics_manager.update_active_sessions(0)  # Count unchanged
-
         response_data["session_id"] = session_id
         return response_data
-
-    async def stream_query(
-        self,
-        message: str,
-        user_id: str | None = None,
-        session_id: str | None = None,
-        context: dict[str, Any] | None = None,
-        memories: list[str] | None = None,
-    ) -> AsyncIterator[StreamChunk]:
-        """Execute an asynchronous streaming query against the agent.
-
-        This method streams response chunks as they are generated by the model,
-        providing real-time output for improved user experience.
-
-        Args:
-            message: User message to process
-            user_id: Optional user identifier
-            session_id: Optional session identifier
-            context: Optional additional context
-            memories: Optional list of retrieved memories
-
-        Yields:
-            StreamChunk objects containing:
-                - chunk: Response text chunk
-                - done: Whether this is the final chunk
-                - tool_call: Optional tool call information
-                - metadata: Optional metadata
-
-        Raises:
-            AgentQueryError: If the streaming query fails
-
-        Example:
-            >>> async for chunk in agent.stream_query("Hello!"):
-            ...     print(chunk.chunk, end="", flush=True)
-            ...     if chunk.done:
-            ...         print()  # Final newline
-        """
-        self._ensure_setup()
-
-        start_time = datetime.now(UTC)
-
-        # Record request metric
-        if self._metrics_manager:
-            self._metrics_manager.record_request(method="stream_query", user_id=user_id)
-
-        try:
-            # Set user context for memory tools
-            if user_id:
-                from agent_engine.tools.memory_tools import set_current_user
-                set_current_user(user_id)
-
-            # Retrieve memories if memory manager is available
-            if memories is None and self._memory_manager and user_id:
-                memories = await self._aget_user_memories(user_id, message)
-
-            # Retrieve session history if session_id is provided
-            session_history = None
-            if session_id and self._session_manager:
-                session_history = await self._aget_session_history(session_id)
-
-            # Build the full message with context
-            full_message = self._build_message(message, context, memories, session_history)
-
-            # Track tool calls
-            tool_calls: list[dict[str, Any]] = []
-
-            # Stream from PydanticAIAgent
-            async for text, final_result in self._pydantic_agent.run_stream(full_message):
-                if final_result is not None:
-                    # Extract tool calls from final result
-                    tool_calls = final_result.tool_calls
-                    for tc in tool_calls:
-                        yield StreamChunk(chunk="", done=False, tool_call=tc)
-                else:
-                    yield StreamChunk(chunk=text, done=False)
-
-            # Record metrics
-            latency_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
-            if self._metrics_manager:
-                self._metrics_manager.record_latency(latency_ms, method="stream_query")
-
-            # Yield final chunk with metadata
-            yield StreamChunk(
-                chunk="",
-                done=True,
-                metadata={
-                    "model": self.model_name,
-                    "user_id": user_id,
-                    "session_id": session_id,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                    "latency_ms": latency_ms,
-                    "tool_calls": tool_calls,
-                },
-            )
-
-            logger.info(
-                "stream_query_completed",
-                user_id=user_id,
-                session_id=session_id,
-                latency_ms=latency_ms,
-            )
-
-        except AgentQueryError:
-            if self._metrics_manager:
-                self._metrics_manager.record_error("AgentQueryError", method="stream_query")
-            raise
-        except Exception as e:
-            if self._metrics_manager:
-                self._metrics_manager.record_error(type(e).__name__, method="stream_query")
-            logger.error(
-                "stream_query_failed",
-                user_id=user_id,
-                session_id=session_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            raise AgentQueryError(
-                f"Stream query failed: {e}",
-                user_id=user_id,
-                session_id=session_id,
-                details={"error_type": type(e).__name__},
-            ) from e
 
     async def stream_query_with_session(
         self,
@@ -743,22 +641,14 @@ class PydanticAIAgentWrapper:
     ) -> AsyncIterator[StreamChunk]:
         """Execute a streaming query with automatic session management.
 
-        This method combines session management with streaming responses:
-        1. Creates or retrieves a session
-        2. Records the user message as an event
-        3. Retrieves relevant memories
-        4. Streams the response chunks
-        5. Records the complete response as an event
-        6. Optionally generates new memories
-
         Args:
             message: User message to process
-            user_id: User identifier (required for session)
+            user_id: User identifier (required)
             session_id: Optional existing session ID
             context: Optional additional context
 
         Yields:
-            StreamChunk objects with response chunks
+            StreamChunk objects
 
         Raises:
             AgentQueryError: If the streaming query fails
@@ -766,11 +656,8 @@ class PydanticAIAgentWrapper:
         self._ensure_setup()
 
         if self._session_manager is None:
-            # Fallback to regular streaming if sessions disabled
             async for chunk in self.stream_query(
-                message=message,
-                user_id=user_id,
-                context=context,
+                message=message, user_id=user_id, context=context
             ):
                 yield chunk
             return
@@ -830,7 +717,7 @@ class PydanticAIAgentWrapper:
             },
         )
 
-        # Generate memories from session (if auto-generate enabled)
+        # Generate memories from session
         if self._memory_manager and self.config and self.config.memory.auto_generate:
             await self._memory_manager.generate_from_session(session, user_id)
 
@@ -842,10 +729,7 @@ class PydanticAIAgentWrapper:
         context: dict[str, Any] | None = None,
         memories: list[str] | None = None,
     ) -> Iterator[StreamChunk]:
-        """Execute a synchronous streaming query against the agent.
-
-        This is a synchronous wrapper around the async streaming functionality,
-        useful for non-async contexts.
+        """Execute a synchronous streaming query.
 
         Args:
             message: User message to process
@@ -855,7 +739,7 @@ class PydanticAIAgentWrapper:
             memories: Optional list of retrieved memories
 
         Yields:
-            StreamChunk objects containing response chunks
+            StreamChunk objects
 
         Raises:
             AgentQueryError: If the streaming query fails
@@ -884,15 +768,7 @@ class PydanticAIAgentWrapper:
         yield from chunks
 
     def _get_user_memories(self, user_id: str, query: str) -> list[str]:
-        """Retrieve user memories synchronously.
-
-        Args:
-            user_id: User identifier
-            query: Query for similarity search
-
-        Returns:
-            List of memory strings
-        """
+        """Retrieve user memories synchronously."""
         import asyncio
 
         try:
@@ -910,15 +786,7 @@ class PydanticAIAgentWrapper:
             return []
 
     async def _aget_user_memories(self, user_id: str, query: str) -> list[str]:
-        """Retrieve user memories asynchronously.
-
-        Args:
-            user_id: User identifier
-            query: Query for similarity search
-
-        Returns:
-            List of memory strings
-        """
+        """Retrieve user memories asynchronously."""
         try:
             memories = await self._memory_manager.retrieve_memories(
                 user_id=user_id,
@@ -931,14 +799,7 @@ class PydanticAIAgentWrapper:
             return []
 
     def _get_session_history_sync(self, session_id: str) -> list[dict[str, str]]:
-        """Retrieve session history synchronously.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            List of message dicts with 'role' and 'content' keys
-        """
+        """Retrieve session history synchronously."""
         import asyncio
 
         try:
@@ -952,14 +813,7 @@ class PydanticAIAgentWrapper:
             return []
 
     async def _aget_session_history(self, session_id: str) -> list[dict[str, str]]:
-        """Retrieve session history asynchronously.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            List of message dicts with 'role' and 'content' keys
-        """
+        """Retrieve session history asynchronously."""
         try:
             events = await self._session_manager.list_events(session_id)
             return MessageBuilder.parse_session_events(events)
@@ -967,83 +821,27 @@ class PydanticAIAgentWrapper:
             logger.warning("session_history_retrieval_failed", error=str(e))
             return []
 
-    def _build_message(
+    def _record_metrics(
         self,
-        message: str,
-        context: dict[str, Any] | None = None,
-        memories: list[str] | None = None,
-        session_history: list[dict[str, str]] | None = None,
-    ) -> str:
-        """Build the full message with context, memories, and session history.
-
-        This method delegates to MessageBuilder for backward compatibility.
-
-        Args:
-            message: Original user message
-            context: Optional additional context
-            memories: Optional list of memories
-            session_history: Optional list of previous messages
-
-        Returns:
-            Full message string
-        """
-        return self._message_builder.build(message, context, memories, session_history)
-
-    def _process_result(
-        self,
-        result: Any,
-        user_id: str | None,
-        session_id: str | None,
+        response_data: dict[str, Any],
         start_time: datetime,
-    ) -> dict[str, Any]:
-        """Process the agent result into a response dictionary.
+        method: str,
+    ) -> None:
+        """Record metrics for a query."""
+        if not self._metrics_manager:
+            return
 
-        This method is kept for backward compatibility but delegates
-        to ResultProcessor.process_raw().
+        latency_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
+        self._metrics_manager.record_latency(latency_ms, method=method)
 
-        Args:
-            result: Pydantic AI result object
-            user_id: User identifier
-            session_id: Session identifier
-            start_time: Query start time
-
-        Returns:
-            Response dictionary
-        """
-        return self._result_processor.process_raw(
-            result=result,
-            user_id=user_id,
-            session_id=session_id,
-            start_time=start_time,
-        )
-
-    def add_tool(self, tool: Callable[..., Any]) -> None:
-        """Add a tool to the agent.
-
-        Note: This should be called before set_up().
-
-        Args:
-            tool: Tool function to add
-        """
-        if self._is_setup:
-            logger.warning(
-                "tool_added_after_setup",
-                message="Adding tool after set_up() may not take effect",
+        if "usage" in response_data and response_data["usage"]:
+            self._metrics_manager.record_tokens(
+                input_tokens=response_data["usage"].get("prompt_tokens", 0),
+                output_tokens=response_data["usage"].get("completion_tokens", 0),
+                model=self.agent.model_name,
             )
-        self.tools.append(tool)
 
-    def register_tools(self, tools: Sequence[Callable[..., Any]]) -> None:
-        """Register multiple tools at once.
-
-        Note: This should be called before set_up().
-
-        Args:
-            tools: Sequence of tool functions
-        """
-        for tool in tools:
-            self.add_tool(tool)
-
-    # Phase 2: Session management accessors
+    # Property accessors for managers
     @property
     def session_manager(self) -> Any:
         """Get the session manager instance."""
@@ -1055,15 +853,11 @@ class PydanticAIAgentWrapper:
         return self._memory_manager
 
     def get_stats(self) -> dict[str, Any]:
-        """Get agent statistics including Phase 2 metrics.
-
-        Returns:
-            Dictionary with agent statistics
-        """
+        """Get wrapper statistics including Phase 2 metrics."""
         stats: dict[str, Any] = {
-            "model": self.model_name,
+            "model": self.agent.model_name,
             "is_setup": self._is_setup,
-            "tool_count": len(self.tools),
+            "tool_count": len(self.agent.tools),
         }
 
         if self._session_manager:

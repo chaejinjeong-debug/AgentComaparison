@@ -1,7 +1,7 @@
 # TODO: Pydantic AI Agent Platform on VertexAI Agent Engine
 
 **최종 수정일**: 2026-02-03
-**상태**: Phase 3 Complete (Production Readiness)
+**상태**: Phase 4 In Progress (Architecture Refactoring Complete)
 
 ---
 
@@ -205,6 +205,22 @@ tests/
 ### Week 13: 스트리밍 응답
 - [x] **AC-005**: `stream_query` 메서드 구현
 - [x] Bidirectional streaming 지원
+
+### Week 13.5: 아키텍처 리팩토링 ✅
+- [x] Core 모듈 분리 (`agent_engine/core/`)
+- [x] **BaseAgent**: 추상 인터페이스 정의
+- [x] **PydanticAIAgent**: Pydantic AI 전용 비즈니스 로직 분리
+- [x] **AgentEngineWrapper**: 배포/오케스트레이션 로직 분리
+- [x] **MessageBuilder**: 메시지 조합 유틸리티
+- [x] **ResultProcessor**: 결과 처리 유틸리티
+- [x] `PydanticAIAgentWrapper` Facade 패턴으로 하위 호환성 유지
+- [x] 신규 52개 테스트 추가 (test_core.py)
+- [x] 기존 테스트 27개 통과 확인
+
+**리팩토링 결과:**
+- `agent.py`: 1143줄 → 1079줄 (Facade)
+- 각 core 클래스: ~100-300줄
+- 향후 다른 LLM Provider 지원 가능 구조
 
 ### Week 14: 멀티 에이전트
 - [ ] A2A Protocol 설계
