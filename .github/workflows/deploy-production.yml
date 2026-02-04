@@ -70,7 +70,11 @@ jobs:
         run: |
           source .venv/bin/activate
           echo "=== Deploying to production: ${{ steps.version.outputs.VERSION }} ==="
-          python scripts/deploy_source.py --env production
+          python scripts/deploy_source.py deploy \
+            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --location asia-northeast3 \
+            --display-name "pydantic-ai-agent-production" \
+            --description "Pydantic AI Agent (Production) - ${{ steps.version.outputs.VERSION }}"
         env:
           GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
 

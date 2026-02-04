@@ -71,7 +71,11 @@ jobs:
         run: |
           source .venv/bin/activate
           echo "=== Deploying to staging ==="
-          python scripts/deploy_source.py --env staging
+          python scripts/deploy_source.py deploy \
+            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --location asia-northeast3 \
+            --display-name "pydantic-ai-agent-staging" \
+            --description "Pydantic AI Agent (Staging)"
         env:
           GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
 
