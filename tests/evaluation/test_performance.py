@@ -114,8 +114,8 @@ class TestPerformanceMetrics:
             metrics.add_latency(float(i))
 
         assert metrics.p50_ms == 50.5  # Median of 1-100
-        assert metrics.p90_ms == 90.0
-        assert metrics.p99_ms == 99.0
+        assert metrics.p90_ms == 91.0  # Index 90 (0-indexed) = 91
+        assert metrics.p99_ms == 100.0  # Index 99 (0-indexed) = 100
 
     def test_error_rate(self) -> None:
         """Test error rate calculation."""

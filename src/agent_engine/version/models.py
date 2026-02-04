@@ -3,7 +3,7 @@
 Defines data models for version tracking and deployment information.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -45,7 +45,7 @@ class Version(BaseModel):
     environment: Environment = Field(..., description="Deployment environment")
     agent_engine_id: str | None = Field(default=None, description="Agent Engine resource ID")
     deployed_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Deployment timestamp",
     )
     deployed_by: str = Field(default="unknown", description="Deployer identity")
@@ -87,7 +87,7 @@ class DeploymentInfo(BaseModel):
     source_version: str | None = Field(default=None, description="Previous version")
     target_environment: Environment = Field(..., description="Target environment")
     started_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Deployment start time",
     )
     completed_at: datetime | None = Field(default=None, description="Completion time")
@@ -96,7 +96,7 @@ class DeploymentInfo(BaseModel):
 
     def complete(self, success: bool, error_message: str | None = None) -> None:
         """Mark deployment as complete."""
-        self.completed_at = datetime.now(timezone.utc)
+        self.completed_at = datetime.now(UTC)
         self.success = success
         self.error_message = error_message
 
@@ -118,7 +118,7 @@ class RollbackRecord(BaseModel):
     to_version: str = Field(..., description="Version rolled back to")
     environment: Environment = Field(..., description="Environment")
     executed_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Execution time",
     )
     executed_by: str = Field(default="unknown", description="Executor identity")

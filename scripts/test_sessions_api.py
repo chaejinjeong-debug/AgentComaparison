@@ -37,8 +37,7 @@ def main():
     print("Creating VertexAI SDK client...")
     client = vertexai.Client(project=PROJECT_ID, location=LOCATION)
     agent_engine_name = (
-        f"projects/{PROJECT_ID}/locations/{LOCATION}"
-        f"/reasoningEngines/{AGENT_ENGINE_ID}"
+        f"projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{AGENT_ENGINE_ID}"
     )
     print(f"Agent Engine Name: {agent_engine_name}\n")
 
@@ -127,7 +126,7 @@ def main():
             content = getattr(event, "content", {})
             parts = content.get("parts", []) if isinstance(content, dict) else []
             text = parts[0].get("text", "") if parts else str(content)
-            print(f"  {i+1}. [{author}] {text[:50]}...")
+            print(f"  {i + 1}. [{author}] {text[:50]}...")
         print()
     except Exception as e:
         print(f"Failed to list events: {e}\n")

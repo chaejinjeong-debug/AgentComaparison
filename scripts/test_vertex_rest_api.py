@@ -106,13 +106,9 @@ async def test_memory_api():
         generate_url = f"{BASE_URL}/{REASONING_ENGINE}/memories:generate"
         memory_data = {
             "directMemoriesSource": {
-                "directMemories": [
-                    {"fact": "User's name is Luke from REST API test"}
-                ]
+                "directMemories": [{"fact": "User's name is Luke from REST API test"}]
             },
-            "scope": {
-                "userId": "test-user-rest-api"
-            }
+            "scope": {"userId": "test-user-rest-api"},
         }
         try:
             response = await client.post(generate_url, headers=headers, json=memory_data)
@@ -128,11 +124,7 @@ async def test_memory_api():
         # 2. Retrieve memories
         print("\n2. Retrieving memories...")
         retrieve_url = f"{BASE_URL}/{REASONING_ENGINE}/memories:retrieve"
-        retrieve_data = {
-            "scope": {
-                "userId": "test-user-rest-api"
-            }
-        }
+        retrieve_data = {"scope": {"userId": "test-user-rest-api"}}
         try:
             response = await client.post(retrieve_url, headers=headers, json=retrieve_data)
             print(f"   Status: {response.status_code}")
@@ -180,7 +172,7 @@ async def check_api_availability():
                 print(f"  {name}: {response.status_code} ({status})")
 
                 if response.status_code >= 400:
-                    error_msg = response.text[:100].replace('\n', ' ')
+                    error_msg = response.text[:100].replace("\n", " ")
                     print(f"    -> {error_msg}")
 
             except Exception as e:

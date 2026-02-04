@@ -309,7 +309,7 @@ def main() -> int:
         create_uptime_check(args.project, check_config, args.dry_run)
 
     print("\n=== Alerts Setup Complete ===")
-    print(f"\nTo view alerts, run:")
+    print("\nTo view alerts, run:")
     print(f"  gcloud alpha monitoring policies list --project={args.project}")
     return 0
 

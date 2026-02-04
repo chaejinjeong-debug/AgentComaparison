@@ -160,9 +160,7 @@ class InMemorySessionBackend(SessionBackend):
 
     async def cleanup_expired_sessions(self) -> int:
         """Remove all expired sessions."""
-        expired_ids = [
-            sid for sid, session in self._sessions.items() if session.is_expired
-        ]
+        expired_ids = [sid for sid, session in self._sessions.items() if session.is_expired]
 
         for session_id in expired_ids:
             del self._sessions[session_id]
@@ -178,11 +176,7 @@ class InMemorySessionBackend(SessionBackend):
         include_expired: bool = False,
     ) -> list[Session]:
         """Get all sessions for a user."""
-        sessions = [
-            session
-            for session in self._sessions.values()
-            if session.user_id == user_id
-        ]
+        sessions = [session for session in self._sessions.values() if session.user_id == user_id]
 
         if not include_expired:
             sessions = [s for s in sessions if not s.is_expired]

@@ -77,7 +77,9 @@ def main() -> int:
     args = parser.parse_args()
 
     # Initialize components
-    registry_path = args.registry_path or Path(__file__).parent.parent.parent / "versions" / "registry.yaml"
+    registry_path = (
+        args.registry_path or Path(__file__).parent.parent.parent / "versions" / "registry.yaml"
+    )
     registry = VersionRegistry(registry_path=registry_path)
     rollback_manager = RollbackManager(
         registry=registry,

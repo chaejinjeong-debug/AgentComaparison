@@ -5,7 +5,7 @@ Provides functionality to generate and export evaluation reports.
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +24,7 @@ class EvaluationReport:
     """
 
     title: str = "Agent Evaluation Report"
-    generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    generated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     summary: EvaluationSummary | None = None
     config: dict[str, Any] = field(default_factory=dict)
 
@@ -92,7 +92,7 @@ class EvaluationReporter:
             # Quality metrics
             lines.append("## Quality Metrics")
             lines.append("")
-            lines.append(f"| Metric | Value |")
+            lines.append("| Metric | Value |")
             lines.append("|--------|-------|")
             lines.append(f"| Accuracy | {quality.accuracy:.2%} |")
             lines.append(f"| Passed | {quality.passed} |")
@@ -103,7 +103,7 @@ class EvaluationReporter:
             # Performance metrics
             lines.append("## Performance Metrics")
             lines.append("")
-            lines.append(f"| Metric | Value |")
+            lines.append("| Metric | Value |")
             lines.append("|--------|-------|")
             lines.append(f"| P50 Latency | {perf.p50_ms:.0f}ms |")
             lines.append(f"| P90 Latency | {perf.p90_ms:.0f}ms |")

@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from agent_engine.evaluation import PerformanceMetrics, TestCaseLoader
 
-
 # Sample queries for performance testing
 SAMPLE_QUERIES = [
     "What is the capital of France?",
@@ -75,7 +74,7 @@ async def run_load_test(
                 await mock_agent_query_async(query)
                 latency_ms = (time.perf_counter() - start_time) * 1000
                 metrics.add_latency(latency_ms)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 metrics.add_timeout()
             except Exception:
                 metrics.add_error()
@@ -114,14 +113,14 @@ def print_results(metrics: PerformanceMetrics, duration: float) -> None:
     print("PERFORMANCE TEST RESULTS")
     print("=" * 60)
 
-    print(f"\nRequests:")
+    print("\nRequests:")
     print(f"  Total: {metrics.request_count}")
     print(f"  Successful: {metrics.request_count - metrics.error_count - metrics.timeout_count}")
     print(f"  Errors: {metrics.error_count}")
     print(f"  Timeouts: {metrics.timeout_count}")
     print(f"  Error Rate: {metrics.error_rate:.2%}")
 
-    print(f"\nLatency (ms):")
+    print("\nLatency (ms):")
     print(f"  Min: {metrics.min_ms:.0f}")
     print(f"  Mean: {metrics.mean_ms:.0f}")
     print(f"  P50: {metrics.p50_ms:.0f}")
@@ -131,7 +130,7 @@ def print_results(metrics: PerformanceMetrics, duration: float) -> None:
 
     if duration > 0:
         throughput = metrics.request_count / duration
-        print(f"\nThroughput:")
+        print("\nThroughput:")
         print(f"  {throughput:.1f} requests/second")
 
     # SLA check
@@ -141,7 +140,7 @@ def print_results(metrics: PerformanceMetrics, duration: float) -> None:
         error_rate_threshold=0.05,
     )
 
-    print(f"\nSLA Compliance:")
+    print("\nSLA Compliance:")
     if meets_sla:
         print("  All requirements met")
     else:
@@ -203,7 +202,7 @@ def main() -> int:
         queries = SAMPLE_QUERIES
         print(f"Using {len(queries)} sample queries")
 
-    print(f"\nConfiguration:")
+    print("\nConfiguration:")
     print(f"  Duration: {args.duration}s" if args.duration else f"  Requests: {args.requests}")
     print(f"  Concurrency: {args.concurrency}")
     print(f"  P50 Threshold: {args.p50_threshold}ms")

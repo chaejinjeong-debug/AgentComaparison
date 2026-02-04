@@ -8,7 +8,7 @@ deployed without external module dependencies.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, Callable, Sequence
+from typing import Any
 
 
 class StandaloneAgent:

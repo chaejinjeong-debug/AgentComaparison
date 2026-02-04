@@ -95,7 +95,9 @@ def main() -> int:
         return 0
 
     # Initialize registry
-    registry_path = args.registry_path or Path(__file__).parent.parent.parent / "versions" / "registry.yaml"
+    registry_path = (
+        args.registry_path or Path(__file__).parent.parent.parent / "versions" / "registry.yaml"
+    )
     registry = VersionRegistry(registry_path=registry_path)
 
     # Register version
@@ -108,7 +110,7 @@ def main() -> int:
         metadata={"git_branch": branch} if branch else {},
     )
 
-    print(f"\nVersion registered successfully!")
+    print("\nVersion registered successfully!")
     print(f"  Status: {version.status.value}")
     print(f"  Deployed at: {version.deployed_at.isoformat()}")
 

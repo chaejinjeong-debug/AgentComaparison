@@ -289,6 +289,7 @@ class AgentEngineWrapper:
             # Set user context for memory tools
             if user_id:
                 from agent_engine.tools.memory_tools import set_current_user
+
                 set_current_user(user_id)
 
             # Retrieve memories if needed
@@ -301,9 +302,7 @@ class AgentEngineWrapper:
                 session_history = self._get_session_history_sync(session_id)
 
             # Build the full message
-            full_message = self._message_builder.build(
-                message, context, memories, session_history
-            )
+            full_message = self._message_builder.build(message, context, memories, session_history)
 
             # Run the agent
             result = self.agent.run_sync(full_message)
@@ -386,6 +385,7 @@ class AgentEngineWrapper:
             # Set user context for memory tools
             if user_id:
                 from agent_engine.tools.memory_tools import set_current_user
+
                 set_current_user(user_id)
 
             # Retrieve memories if needed
@@ -398,9 +398,7 @@ class AgentEngineWrapper:
                 session_history = await self._aget_session_history(session_id)
 
             # Build the full message
-            full_message = self._message_builder.build(
-                message, context, memories, session_history
-            )
+            full_message = self._message_builder.build(message, context, memories, session_history)
 
             # Run the agent
             result = await self.agent.run_async(full_message)
@@ -483,6 +481,7 @@ class AgentEngineWrapper:
             # Set user context for memory tools
             if user_id:
                 from agent_engine.tools.memory_tools import set_current_user
+
                 set_current_user(user_id)
 
             # Retrieve memories if needed
@@ -495,9 +494,7 @@ class AgentEngineWrapper:
                 session_history = await self._aget_session_history(session_id)
 
             # Build the full message
-            full_message = self._message_builder.build(
-                message, context, memories, session_history
-            )
+            full_message = self._message_builder.build(message, context, memories, session_history)
 
             # Track tool calls
             tool_calls: list[dict[str, Any]] = []
@@ -656,9 +653,7 @@ class AgentEngineWrapper:
         self._ensure_setup()
 
         if self._session_manager is None:
-            async for chunk in self.stream_query(
-                message=message, user_id=user_id, context=context
-            ):
+            async for chunk in self.stream_query(message=message, user_id=user_id, context=context):
                 yield chunk
             return
 
@@ -804,9 +799,7 @@ class AgentEngineWrapper:
 
         try:
             loop = asyncio.get_event_loop()
-            events = loop.run_until_complete(
-                self._session_manager.list_events(session_id)
-            )
+            events = loop.run_until_complete(self._session_manager.list_events(session_id))
             return MessageBuilder.parse_session_events(events)
         except Exception as e:
             logger.warning("session_history_retrieval_failed", error=str(e))

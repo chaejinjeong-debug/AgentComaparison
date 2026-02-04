@@ -267,12 +267,8 @@ def main() -> None:
     # Deploy command
     deploy_parser = subparsers.add_parser("deploy", help="Deploy a new agent from source")
     deploy_parser.add_argument("--project", required=True, help="GCP project ID")
-    deploy_parser.add_argument(
-        "--location", default="asia-northeast3", help="GCP region"
-    )
-    deploy_parser.add_argument(
-        "--staging-bucket", help="GCS bucket for staging (gs://...)"
-    )
+    deploy_parser.add_argument("--location", default="asia-northeast3", help="GCP region")
+    deploy_parser.add_argument("--staging-bucket", help="GCS bucket for staging (gs://...)")
     deploy_parser.add_argument(
         "--display-name", default="pydantic-ai-agent", help="Agent display name"
     )
@@ -281,9 +277,7 @@ def main() -> None:
         default="Pydantic AI Agent on VertexAI Agent Engine",
         help="Agent description",
     )
-    deploy_parser.add_argument(
-        "--model", default="gemini-2.5-pro", help="Gemini model name"
-    )
+    deploy_parser.add_argument("--model", default="gemini-2.5-pro", help="Gemini model name")
     deploy_parser.add_argument(
         "--system-prompt",
         default="You are a helpful AI assistant.",
@@ -296,20 +290,14 @@ def main() -> None:
     # Update command
     update_parser = subparsers.add_parser("update", help="Update an existing agent")
     update_parser.add_argument("--project", required=True, help="GCP project ID")
-    update_parser.add_argument(
-        "--location", default="asia-northeast3", help="GCP region"
-    )
+    update_parser.add_argument("--location", default="asia-northeast3", help="GCP region")
     update_parser.add_argument("--agent-name", required=True, help="Agent resource name")
-    update_parser.add_argument(
-        "--staging-bucket", help="GCS bucket for staging (gs://...)"
-    )
+    update_parser.add_argument("--staging-bucket", help="GCS bucket for staging (gs://...)")
 
     # Verify command
     verify_parser = subparsers.add_parser("verify", help="Verify agent deployment")
     verify_parser.add_argument("--project", required=True, help="GCP project ID")
-    verify_parser.add_argument(
-        "--location", default="asia-northeast3", help="GCP region"
-    )
+    verify_parser.add_argument("--location", default="asia-northeast3", help="GCP region")
     verify_parser.add_argument("--agent-name", required=True, help="Agent resource name")
 
     args = parser.parse_args()
@@ -330,7 +318,7 @@ def main() -> None:
                 system_prompt=args.system_prompt,
             )
 
-            print(f"\nAgent deployed successfully from source!")
+            print("\nAgent deployed successfully from source!")
             print(f"Agent Name: {agent_name}")
 
             if args.verify:
@@ -352,7 +340,7 @@ def main() -> None:
                 staging_bucket=args.staging_bucket,
             )
 
-            print(f"\nAgent updated successfully from source!")
+            print("\nAgent updated successfully from source!")
             print(f"Agent Name: {agent_name}")
 
         elif args.command == "verify":
@@ -362,7 +350,7 @@ def main() -> None:
                 location=args.location,
             )
 
-            print(f"\nVerification Result:")
+            print("\nVerification Result:")
             print(f"  Agent: {result['agent_name']}")
             print(f"  Status: {result['status']}")
             print(f"  Test Message: {result['test_message']}")

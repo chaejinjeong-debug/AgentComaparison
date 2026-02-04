@@ -303,12 +303,8 @@ def main() -> None:
     # Deploy command
     deploy_parser = subparsers.add_parser("deploy", help="Deploy a new agent")
     deploy_parser.add_argument("--project", required=True, help="GCP project ID")
-    deploy_parser.add_argument(
-        "--location", default="asia-northeast3", help="GCP region"
-    )
-    deploy_parser.add_argument(
-        "--model", default="gemini-2.5-pro", help="Gemini model name"
-    )
+    deploy_parser.add_argument("--location", default="asia-northeast3", help="GCP region")
+    deploy_parser.add_argument("--model", default="gemini-2.5-pro", help="Gemini model name")
     deploy_parser.add_argument(
         "--display-name", default="pydantic-ai-agent", help="Agent display name"
     )
@@ -330,24 +326,18 @@ def main() -> None:
     # Status command
     status_parser = subparsers.add_parser("status", help="Get agent status")
     status_parser.add_argument("--project", required=True, help="GCP project ID")
-    status_parser.add_argument(
-        "--location", default="asia-northeast3", help="GCP region"
-    )
+    status_parser.add_argument("--location", default="asia-northeast3", help="GCP region")
     status_parser.add_argument("--agent-name", required=True, help="Agent resource name")
 
     # List command
     list_parser = subparsers.add_parser("list", help="List all agents")
     list_parser.add_argument("--project", required=True, help="GCP project ID")
-    list_parser.add_argument(
-        "--location", default="asia-northeast3", help="GCP region"
-    )
+    list_parser.add_argument("--location", default="asia-northeast3", help="GCP region")
 
     # Delete command
     delete_parser = subparsers.add_parser("delete", help="Delete an agent")
     delete_parser.add_argument("--project", required=True, help="GCP project ID")
-    delete_parser.add_argument(
-        "--location", default="asia-northeast3", help="GCP region"
-    )
+    delete_parser.add_argument("--location", default="asia-northeast3", help="GCP region")
     delete_parser.add_argument("--agent-name", required=True, help="Agent resource name")
     delete_parser.add_argument(
         "--force", action="store_true", help="Force deletion without confirmation"
@@ -356,9 +346,7 @@ def main() -> None:
     # Query command
     query_parser = subparsers.add_parser("query", help="Query a deployed agent")
     query_parser.add_argument("--project", required=True, help="GCP project ID")
-    query_parser.add_argument(
-        "--location", default="asia-northeast3", help="GCP region"
-    )
+    query_parser.add_argument("--location", default="asia-northeast3", help="GCP region")
     query_parser.add_argument("--agent-name", required=True, help="Agent resource name")
     query_parser.add_argument("--message", required=True, help="Message to send to the agent")
 
@@ -387,7 +375,7 @@ def main() -> None:
                 staging_bucket=args.staging_bucket,
             )
 
-            print(f"\nAgent deployed successfully!")
+            print("\nAgent deployed successfully!")
             print(f"Agent Name: {agent_name}")
 
         elif args.command == "status":
@@ -430,7 +418,7 @@ def main() -> None:
             print("\nAgent Response:")
             if isinstance(response, dict):
                 print(f"  Response: {response.get('response', response)}")
-                if response.get('tool_calls'):
+                if response.get("tool_calls"):
                     print(f"  Tool Calls: {response.get('tool_calls')}")
             else:
                 print(f"  {response}")

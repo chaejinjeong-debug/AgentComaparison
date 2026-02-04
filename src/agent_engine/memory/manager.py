@@ -56,9 +56,7 @@ class MemoryManager:
         self.config = config or MemoryConfig()
         self._project_id = project_id
         self._location = location
-        self.retriever = MemoryRetriever(
-            similarity_threshold=self.config.similarity_threshold
-        )
+        self.retriever = MemoryRetriever(similarity_threshold=self.config.similarity_threshold)
         self._backend = self._create_backend()
 
         logger.info(
@@ -78,9 +76,7 @@ class MemoryManager:
                     "Set MEMORY_AGENT_ENGINE_ID environment variable."
                 )
             if not self._project_id or not self._location:
-                raise ValueError(
-                    "project_id and location are required for VertexAI backend."
-                )
+                raise ValueError("project_id and location are required for VertexAI backend.")
 
             return VertexAIMemoryBackend(
                 project_id=self._project_id,

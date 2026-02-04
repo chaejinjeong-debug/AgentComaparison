@@ -343,6 +343,7 @@ class PydanticAIAgentWrapper:
             # Set user context for memory tools
             if user_id:
                 from agent_engine.tools.memory_tools import set_current_user
+
                 set_current_user(user_id)
 
             # Retrieve memories if memory manager is available
@@ -452,6 +453,7 @@ class PydanticAIAgentWrapper:
             # Set user context for memory tools
             if user_id:
                 from agent_engine.tools.memory_tools import set_current_user
+
                 set_current_user(user_id)
 
             # Retrieve memories if memory manager is available
@@ -660,6 +662,7 @@ class PydanticAIAgentWrapper:
             # Set user context for memory tools
             if user_id:
                 from agent_engine.tools.memory_tools import set_current_user
+
                 set_current_user(user_id)
 
             # Retrieve memories if memory manager is available
@@ -943,9 +946,7 @@ class PydanticAIAgentWrapper:
 
         try:
             loop = asyncio.get_event_loop()
-            events = loop.run_until_complete(
-                self._session_manager.list_events(session_id)
-            )
+            events = loop.run_until_complete(self._session_manager.list_events(session_id))
             return MessageBuilder.parse_session_events(events)
         except Exception as e:
             logger.warning("session_history_retrieval_failed", error=str(e))

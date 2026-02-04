@@ -71,9 +71,7 @@ class SessionManager:
                     "Set SESSION_AGENT_ENGINE_ID environment variable."
                 )
             if not self._project_id or not self._location:
-                raise ValueError(
-                    "project_id and location are required for VertexAI backend."
-                )
+                raise ValueError("project_id and location are required for VertexAI backend.")
 
             return VertexAISessionBackend(
                 project_id=self._project_id,

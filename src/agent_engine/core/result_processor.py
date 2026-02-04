@@ -159,10 +159,12 @@ class ResultProcessor:
         tool_calls = []
         if hasattr(result, "tool_calls"):
             for tc in result.tool_calls:
-                tool_calls.append({
-                    "tool": getattr(tc, "name", "unknown"),
-                    "args": getattr(tc, "args", {}),
-                })
+                tool_calls.append(
+                    {
+                        "tool": getattr(tc, "name", "unknown"),
+                        "args": getattr(tc, "args", {}),
+                    }
+                )
         return tool_calls
 
     def _extract_usage(self, result: Any) -> dict[str, int]:

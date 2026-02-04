@@ -55,9 +55,11 @@ class TestCase(BaseModel):
         response_lower = response.lower()
         score = 0.0
         reasons = []
+        has_criteria = False
 
         # Check exact match if specified
         if self.expected_output is not None:
+            has_criteria = True
             if self.expected_output.lower() in response_lower:
                 score += 0.5
             else:
@@ -65,29 +67,26 @@ class TestCase(BaseModel):
 
         # Check required keywords
         if self.expected_keywords:
-            found_keywords = sum(
-                1 for kw in self.expected_keywords if kw.lower() in response_lower
-            )
+            has_criteria = True
+            found_keywords = sum(1 for kw in self.expected_keywords if kw.lower() in response_lower)
             keyword_ratio = found_keywords / len(self.expected_keywords)
-            score += 0.3 * keyword_ratio
+            # Score 0.6 for keywords when no expected_output, 0.3 when both exist
+            keyword_score = 0.6 if self.expected_output is None else 0.3
+            score += keyword_score * keyword_ratio
 
             if keyword_ratio < 1.0:
-                missing = [
-                    kw for kw in self.expected_keywords if kw.lower() not in response_lower
-                ]
+                missing = [kw for kw in self.expected_keywords if kw.lower() not in response_lower]
                 reasons.append(f"Missing keywords: {missing}")
 
         # Check forbidden keywords
         if self.forbidden_keywords:
-            found_forbidden = [
-                kw for kw in self.forbidden_keywords if kw.lower() in response_lower
-            ]
+            found_forbidden = [kw for kw in self.forbidden_keywords if kw.lower() in response_lower]
             if found_forbidden:
                 score -= 0.2
                 reasons.append(f"Forbidden keywords found: {found_forbidden}")
 
         # Base score for non-empty response
-        if response.strip() and not self.expected_output and not self.expected_keywords:
+        if response.strip() and not has_criteria:
             score = 0.7  # Default passing score if no specific criteria
 
         # Apply weight

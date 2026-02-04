@@ -49,8 +49,7 @@ class VertexAIMemoryBackend(MemoryBackend):
         # SDK client (lazy init)
         self._client: vertexai.Client | None = None
         self._agent_engine_name = (
-            f"projects/{project_id}/locations/{location}"
-            f"/reasoningEngines/{agent_engine_id}"
+            f"projects/{project_id}/locations/{location}/reasoningEngines/{agent_engine_id}"
         )
 
         # Local cache for tracking

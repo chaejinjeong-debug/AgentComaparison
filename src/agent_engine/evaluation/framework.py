@@ -5,9 +5,10 @@ Provides the main evaluation orchestration logic.
 
 import asyncio
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 
@@ -56,7 +57,7 @@ class EvaluationSummary:
         passed_threshold: Whether quality threshold was met
     """
 
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = None
     total_tests: int = 0
     quality_metrics: QualityMetrics = field(default_factory=QualityMetrics)
@@ -165,7 +166,7 @@ class EvaluationFramework:
             elif result.error:
                 summary.performance_metrics.add_error()
 
-        summary.completed_at = datetime.now(timezone.utc)
+        summary.completed_at = datetime.now(UTC)
         summary.passed_threshold = summary.quality_metrics.meets_threshold(self.threshold)
 
         return summary
@@ -235,7 +236,7 @@ class EvaluationFramework:
                 elif result.error:
                     summary.performance_metrics.add_error()
 
-        summary.completed_at = datetime.now(timezone.utc)
+        summary.completed_at = datetime.now(UTC)
         summary.passed_threshold = summary.quality_metrics.meets_threshold(self.threshold)
 
         return summary
@@ -320,7 +321,7 @@ class EvaluationFramework:
                 latency_ms=latency_ms,
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return EvaluationResult(
                 test_case_id=test_case.id,
                 category=test_case.category,

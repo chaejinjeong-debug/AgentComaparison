@@ -14,8 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
 import structlog
+from dotenv import load_dotenv
 
 # Load .env file from AgentEngine directory
 env_path = Path(__file__).parent.parent / ".env"
@@ -210,30 +210,54 @@ def main() -> None:
 
     # Deploy command
     deploy_parser = subparsers.add_parser("deploy", help="Deploy a new agent")
-    deploy_parser.add_argument("--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})")
-    deploy_parser.add_argument("--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})")
-    deploy_parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Gemini model (default: {DEFAULT_MODEL})")
-    deploy_parser.add_argument("--display-name", default=DEFAULT_DISPLAY_NAME, help=f"Display name (default: {DEFAULT_DISPLAY_NAME})")
+    deploy_parser.add_argument(
+        "--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})"
+    )
+    deploy_parser.add_argument(
+        "--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})"
+    )
+    deploy_parser.add_argument(
+        "--model", default=DEFAULT_MODEL, help=f"Gemini model (default: {DEFAULT_MODEL})"
+    )
+    deploy_parser.add_argument(
+        "--display-name",
+        default=DEFAULT_DISPLAY_NAME,
+        help=f"Display name (default: {DEFAULT_DISPLAY_NAME})",
+    )
     deploy_parser.add_argument("--description", default=DEFAULT_DESCRIPTION, help="Description")
-    deploy_parser.add_argument("--system-prompt", default=DEFAULT_SYSTEM_PROMPT, help="System prompt")
+    deploy_parser.add_argument(
+        "--system-prompt", default=DEFAULT_SYSTEM_PROMPT, help="System prompt"
+    )
     deploy_parser.add_argument("--staging-bucket", help="GCS staging bucket")
 
     # List command
     list_parser = subparsers.add_parser("list", help="List agents")
-    list_parser.add_argument("--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})")
-    list_parser.add_argument("--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})")
+    list_parser.add_argument(
+        "--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})"
+    )
+    list_parser.add_argument(
+        "--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})"
+    )
 
     # Query command
     query_parser = subparsers.add_parser("query", help="Query an agent")
-    query_parser.add_argument("--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})")
-    query_parser.add_argument("--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})")
+    query_parser.add_argument(
+        "--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})"
+    )
+    query_parser.add_argument(
+        "--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})"
+    )
     query_parser.add_argument("--agent-name", required=True, help="Agent resource name")
     query_parser.add_argument("--message", required=True, help="Message to send")
 
     # Delete command
     delete_parser = subparsers.add_parser("delete", help="Delete an agent")
-    delete_parser.add_argument("--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})")
-    delete_parser.add_argument("--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})")
+    delete_parser.add_argument(
+        "--project", default=DEFAULT_PROJECT, help=f"GCP project ID (default: {DEFAULT_PROJECT})"
+    )
+    delete_parser.add_argument(
+        "--location", default=DEFAULT_LOCATION, help=f"GCP region (default: {DEFAULT_LOCATION})"
+    )
     delete_parser.add_argument("--agent-name", required=True, help="Agent resource name")
     delete_parser.add_argument("--force", action="store_true", help="Skip confirmation")
 
@@ -259,7 +283,7 @@ def main() -> None:
                 system_prompt=args.system_prompt,
                 staging_bucket=args.staging_bucket,
             )
-            print(f"\nAgent deployed successfully!")
+            print("\nAgent deployed successfully!")
             print(f"Agent Name: {agent_name}")
 
         elif args.command == "list":
@@ -293,7 +317,7 @@ def main() -> None:
                 project=args.project,
                 location=args.location,
             )
-            print(f"\nAgent deleted successfully!")
+            print("\nAgent deleted successfully!")
 
     except Exception as e:
         logger.error("command_failed", error=str(e), command=args.command)

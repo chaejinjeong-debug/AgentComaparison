@@ -4,7 +4,7 @@ Provides functionality to track, register, and query deployed versions.
 """
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,21 +31,30 @@ class VersionRegistry:
                          Defaults to versions/registry.yaml
         """
         if registry_path is None:
-            registry_path = Path(__file__).parent.parent.parent.parent / "versions" / "registry.yaml"
+            registry_path = (
+                Path(__file__).parent.parent.parent.parent / "versions" / "registry.yaml"
+            )
         self.registry_path = Path(registry_path)
         self._ensure_registry_exists()
 
     def _ensure_registry_exists(self) -> None:
         """Ensure the registry file exists with default structure."""
+        default_registry = {
+            "schema_version": "1.0",
+            "current": {"staging": None, "production": None},
+            "versions": [],
+            "rollbacks": [],
+        }
+
         if not self.registry_path.exists():
             self.registry_path.parent.mkdir(parents=True, exist_ok=True)
-            default_registry = {
-                "schema_version": "1.0",
-                "current": {"staging": None, "production": None},
-                "versions": [],
-                "rollbacks": [],
-            }
             self._save_registry(default_registry)
+        else:
+            # Also initialize if file is empty or missing required keys
+            with open(self.registry_path, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            if not data or "schema_version" not in data:
+                self._save_registry(default_registry)
 
     def _load_registry(self) -> dict[str, Any]:
         """Load registry from YAML file."""
@@ -86,7 +95,7 @@ class VersionRegistry:
             version=version,
             environment=environment,
             agent_engine_id=agent_engine_id,
-            deployed_at=datetime.now(timezone.utc),
+            deployed_at=datetime.now(UTC),
             deployed_by=deployed_by or os.environ.get("USER", "unknown"),
             commit_sha=commit_sha,
             status=VersionStatus.ACTIVE,
@@ -240,7 +249,7 @@ class VersionRegistry:
             from_version=from_version,
             to_version=to_version,
             environment=environment,
-            executed_at=datetime.now(timezone.utc),
+            executed_at=datetime.now(UTC),
             executed_by=executed_by or os.environ.get("USER", "unknown"),
             reason=reason,
             success=success,

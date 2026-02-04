@@ -205,9 +205,7 @@ class PerformanceMetrics:
             violations.append(f"P99 latency {self.p99_ms:.0f}ms > {p99_threshold_ms:.0f}ms")
 
         if self.error_rate > error_rate_threshold:
-            violations.append(
-                f"Error rate {self.error_rate:.2%} > {error_rate_threshold:.2%}"
-            )
+            violations.append(f"Error rate {self.error_rate:.2%} > {error_rate_threshold:.2%}")
 
         return len(violations) == 0, violations
 

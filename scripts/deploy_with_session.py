@@ -77,7 +77,9 @@ class SessionAwareAgent:
             location=self.location,
         )
 
-    def _get_or_create_session(self, user_id: str, session_id: str | None = None) -> tuple[str, str]:
+    def _get_or_create_session(
+        self, user_id: str, session_id: str | None = None
+    ) -> tuple[str, str]:
         """Get existing session or create a new one.
 
         Args:
@@ -92,6 +94,7 @@ class SessionAwareAgent:
         if self._agent_engine_name is None:
             # Get the agent engine name from environment or construct it
             import os
+
             agent_engine_id = os.environ.get("AGENT_ENGINE_ID", "")
             if agent_engine_id:
                 self._agent_engine_name = (
@@ -201,9 +204,7 @@ class SessionAwareAgent:
         if not history:
             return message
 
-        history_text = "\n".join(
-            f"- {msg['role']}: {msg['content']}" for msg in history
-        )
+        history_text = "\n".join(f"- {msg['role']}: {msg['content']}" for msg in history)
 
         return f"""[Previous conversation]
 {history_text}
@@ -381,6 +382,7 @@ def main():
     except Exception as e:
         print(f"\nDeployment failed: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
 

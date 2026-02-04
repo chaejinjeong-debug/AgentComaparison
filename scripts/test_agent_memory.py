@@ -45,8 +45,7 @@ def main():
     agent = reasoning_engines.ReasoningEngine(AGENT_ENGINE_ID)
 
     agent_engine_name = (
-        f"projects/{PROJECT_ID}/locations/{LOCATION}"
-        f"/reasoningEngines/{AGENT_ENGINE_ID}"
+        f"projects/{PROJECT_ID}/locations/{LOCATION}/reasoningEngines/{AGENT_ENGINE_ID}"
     )
 
     # Step 1: Create a session

@@ -38,9 +38,7 @@ class SessionConfig(BaseModel):
     default_ttl_seconds: int = Field(
         default=86400, ge=60, description="Default session TTL (24 hours)"
     )
-    max_events_per_session: int = Field(
-        default=1000, ge=10, description="Max events per session"
-    )
+    max_events_per_session: int = Field(default=1000, ge=10, description="Max events per session")
     backend: SessionBackendType = Field(
         default=SessionBackendType.IN_MEMORY,
         description="Storage backend (in_memory for local, vertex_ai for production)",
@@ -65,9 +63,7 @@ class MemoryConfig(BaseModel):
 
     enabled: bool = Field(default=True, description="Enable memory bank")
     auto_generate: bool = Field(default=True, description="Auto-generate memories from sessions")
-    max_memories_per_user: int = Field(
-        default=1000, ge=10, description="Max memories per user"
-    )
+    max_memories_per_user: int = Field(default=1000, ge=10, description="Max memories per user")
     similarity_threshold: float = Field(
         default=0.7, ge=0.0, le=1.0, description="Similarity threshold for retrieval"
     )
@@ -94,9 +90,7 @@ class ObservabilityConfig(BaseModel):
     tracing_enabled: bool = Field(default=True, description="Enable Cloud Trace")
     logging_enabled: bool = Field(default=True, description="Enable structured logging")
     metrics_enabled: bool = Field(default=True, description="Enable metrics collection")
-    sample_rate: float = Field(
-        default=1.0, ge=0.0, le=1.0, description="Trace sampling rate"
-    )
+    sample_rate: float = Field(default=1.0, ge=0.0, le=1.0, description="Trace sampling rate")
 
 
 class EvaluationConfig(BaseModel):
@@ -116,12 +110,8 @@ class EvaluationConfig(BaseModel):
     quality_threshold: float = Field(
         default=0.85, ge=0.0, le=1.0, description="Minimum accuracy threshold"
     )
-    p50_threshold_ms: float = Field(
-        default=2000.0, gt=0, description="Maximum P50 latency (ms)"
-    )
-    p99_threshold_ms: float = Field(
-        default=10000.0, gt=0, description="Maximum P99 latency (ms)"
-    )
+    p50_threshold_ms: float = Field(default=2000.0, gt=0, description="Maximum P50 latency (ms)")
+    p99_threshold_ms: float = Field(default=10000.0, gt=0, description="Maximum P99 latency (ms)")
     error_rate_threshold: float = Field(
         default=0.05, ge=0.0, le=1.0, description="Maximum error rate"
     )
@@ -129,9 +119,7 @@ class EvaluationConfig(BaseModel):
         default="tests/evaluation/golden/qa_pairs.json",
         description="Path to test data file",
     )
-    timeout_seconds: float = Field(
-        default=30.0, gt=0, description="Default timeout per test"
-    )
+    timeout_seconds: float = Field(default=30.0, gt=0, description="Default timeout per test")
 
 
 class AgentConfig(BaseModel):

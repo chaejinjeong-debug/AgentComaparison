@@ -94,15 +94,12 @@ class InMemoryMemoryBackend(MemoryBackend):
         handle similarity search using the retriever.
         """
         user_memory_ids = self._user_index.get(user_id, set())
-        user_memories = [
-            self._memories[mid]
-            for mid in user_memory_ids
-            if mid in self._memories
-        ]
+        user_memories = [self._memories[mid] for mid in user_memory_ids if mid in self._memories]
 
         if include_global:
             global_memories = [
-                m for m in self._memories.values()
+                m
+                for m in self._memories.values()
                 if m.scope == MemoryScope.GLOBAL and m.memory_id not in user_memory_ids
             ]
             user_memories.extend(global_memories)

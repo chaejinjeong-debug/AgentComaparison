@@ -3,8 +3,9 @@
 Implements OB-001: Cloud Trace integration.
 """
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 import structlog
 
@@ -100,10 +101,12 @@ class TracingManager:
 
         try:
             # Create resource with service information
-            resource = Resource.create({
-                "service.name": self.service_name,
-                "service.version": "0.1.0",
-            })
+            resource = Resource.create(
+                {
+                    "service.name": self.service_name,
+                    "service.version": "0.1.0",
+                }
+            )
 
             # Create sampler based on config
             sampler = TraceIdRatioBased(self.config.sample_rate)
@@ -116,12 +119,8 @@ class TracingManager:
 
             # Add Cloud Trace exporter if project_id is set
             if self.project_id:
-                cloud_trace_exporter = CloudTraceSpanExporter(
-                    project_id=self.project_id
-                )
-                provider.add_span_processor(
-                    BatchSpanProcessor(cloud_trace_exporter)
-                )
+                cloud_trace_exporter = CloudTraceSpanExporter(project_id=self.project_id)
+                provider.add_span_processor(BatchSpanProcessor(cloud_trace_exporter))
                 logger.info(
                     "Cloud Trace exporter configured",
                     project_id=self.project_id,
@@ -129,9 +128,8 @@ class TracingManager:
             else:
                 # Use simple processor for local development
                 from opentelemetry.sdk.trace.export import ConsoleSpanExporter
-                provider.add_span_processor(
-                    SimpleSpanProcessor(ConsoleSpanExporter())
-                )
+
+                provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
                 logger.info("Console span exporter configured (no project_id)")
 
             # Set as global tracer provider

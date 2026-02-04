@@ -1,7 +1,9 @@
 """Tests for rollback management functionality."""
 
+import subprocess
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -170,12 +172,17 @@ class TestRollbackManager:
         assert result.success is False
         assert "not found" in result.message
 
+    @patch("subprocess.run")
     def test_execute_rollback_success(
         self,
+        mock_run: MagicMock,
         rollback_manager: RollbackManager,
         registry: VersionRegistry,
     ) -> None:
         """Test successful rollback execution."""
+        # Mock gcloud command to succeed
+        mock_run.return_value = MagicMock(returncode=0, stdout="{}", stderr="")
+
         registry.register_version(
             version="v1.0.0",
             environment=Environment.STAGING,
@@ -201,12 +208,17 @@ class TestRollbackManager:
         assert current is not None
         assert current.version == "v1.0.0"
 
+    @patch("subprocess.run")
     def test_execute_rollback_to_specific_version(
         self,
+        mock_run: MagicMock,
         rollback_manager: RollbackManager,
         registry: VersionRegistry,
     ) -> None:
         """Test rollback to a specific version."""
+        # Mock gcloud command to succeed
+        mock_run.return_value = MagicMock(returncode=0, stdout="{}", stderr="")
+
         registry.register_version(
             version="v1.0.0",
             environment=Environment.STAGING,
@@ -263,12 +275,17 @@ class TestRollbackManager:
         assert "v1.1.0" in versions
         assert "v1.0.0" in versions
 
+    @patch("subprocess.run")
     def test_get_rollback_history(
         self,
+        mock_run: MagicMock,
         rollback_manager: RollbackManager,
         registry: VersionRegistry,
     ) -> None:
         """Test getting rollback history."""
+        # Mock gcloud command to succeed
+        mock_run.return_value = MagicMock(returncode=0, stdout="{}", stderr="")
+
         registry.register_version(
             version="v1.0.0",
             environment=Environment.STAGING,
@@ -292,12 +309,17 @@ class TestRollbackManager:
         assert history[0].to_version == "v1.0.0"
         assert history[0].reason == "First rollback"
 
+    @patch("subprocess.run")
     def test_rollback_records_history(
         self,
+        mock_run: MagicMock,
         rollback_manager: RollbackManager,
         registry: VersionRegistry,
     ) -> None:
         """Test that rollback creates history record."""
+        # Mock gcloud command to succeed
+        mock_run.return_value = MagicMock(returncode=0, stdout="{}", stderr="")
+
         registry.register_version(
             version="v1.0.0",
             environment=Environment.STAGING,

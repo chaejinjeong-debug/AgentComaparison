@@ -92,9 +92,7 @@ class MessageBuilder:
         Returns:
             Formatted history string
         """
-        return "\n".join(
-            f"- {msg['role']}: {msg['content']}" for msg in history
-        )
+        return "\n".join(f"- {msg['role']}: {msg['content']}" for msg in history)
 
     def _format_memories(self, memories: list[str]) -> str:
         """Format memories into a string.

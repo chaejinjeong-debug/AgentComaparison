@@ -232,9 +232,7 @@ def forget_user_info(
         loop = asyncio.get_event_loop()
 
         if forget_all:
-            count = loop.run_until_complete(
-                _memory_manager.delete_user_memories(_current_user_id)
-            )
+            count = loop.run_until_complete(_memory_manager.delete_user_memories(_current_user_id))
             logger.info(
                 "All user memories deleted",
                 user_id=_current_user_id,
@@ -247,9 +245,7 @@ def forget_user_info(
             }
 
         elif memory_id:
-            success = loop.run_until_complete(
-                _memory_manager.delete_memory(memory_id)
-            )
+            success = loop.run_until_complete(_memory_manager.delete_memory(memory_id))
             if success:
                 logger.info(
                     "Memory deleted",

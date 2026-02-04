@@ -68,8 +68,19 @@ class MemoryRetriever:
 
         # Common word presence features
         common_words = [
-            "the", "is", "are", "was", "were", "have", "has",
-            "like", "want", "need", "work", "live", "name",
+            "the",
+            "is",
+            "are",
+            "was",
+            "were",
+            "have",
+            "has",
+            "like",
+            "want",
+            "need",
+            "work",
+            "live",
+            "name",
         ]
         for word in common_words:
             features.append(1.0 if word in words else 0.0)
@@ -102,7 +113,7 @@ class MemoryRetriever:
             embedding2 = embedding2 + [0.0] * (max_len - len(embedding2))
 
         # Cosine similarity
-        dot_product = sum(a * b for a, b in zip(embedding1, embedding2))
+        dot_product = sum(a * b for a, b in zip(embedding1, embedding2, strict=True))
         magnitude1 = math.sqrt(sum(a * a for a in embedding1))
         magnitude2 = math.sqrt(sum(b * b for b in embedding2))
 

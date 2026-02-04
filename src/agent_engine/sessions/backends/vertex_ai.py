@@ -49,8 +49,7 @@ class VertexAISessionBackend(SessionBackend):
         # SDK client (lazy init)
         self._client: vertexai.Client | None = None
         self._agent_engine_name = (
-            f"projects/{project_id}/locations/{location}"
-            f"/reasoningEngines/{agent_engine_id}"
+            f"projects/{project_id}/locations/{location}/reasoningEngines/{agent_engine_id}"
         )
 
         # Local cache for session metadata
@@ -93,7 +92,7 @@ class VertexAISessionBackend(SessionBackend):
             session = Session(
                 session_id=session_id,
                 user_id=user_id,
-                expires_at=datetime.datetime.now(datetime.timezone.utc)
+                expires_at=datetime.datetime.now(datetime.UTC)
                 + datetime.timedelta(seconds=ttl_seconds),
                 metadata=metadata or {},
             )
@@ -131,8 +130,7 @@ class VertexAISessionBackend(SessionBackend):
             session = Session(
                 session_id=session_id,
                 user_id=getattr(vertex_session, "user_id", "unknown"),
-                expires_at=datetime.datetime.now(datetime.timezone.utc)
-                + datetime.timedelta(hours=24),
+                expires_at=datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=24),
             )
             self._session_cache[session_id] = session
             return session
@@ -161,7 +159,7 @@ class VertexAISessionBackend(SessionBackend):
                 name=session_name,
                 author=author.value,
                 invocation_id=invocation_id,
-                timestamp=datetime.datetime.now(tz=datetime.timezone.utc),
+                timestamp=datetime.datetime.now(tz=datetime.UTC),
                 config={
                     "content": {
                         "role": author.value,
@@ -179,7 +177,7 @@ class VertexAISessionBackend(SessionBackend):
             # Update local cache
             if session_id in self._session_cache:
                 self._session_cache[session_id].events.append(event)
-                self._session_cache[session_id].updated_at = datetime.datetime.now(datetime.timezone.utc)
+                self._session_cache[session_id].updated_at = datetime.datetime.now(datetime.UTC)
 
             logger.debug(
                 "Event appended to VertexAI session via SDK",
@@ -260,9 +258,7 @@ class VertexAISessionBackend(SessionBackend):
         Note: VertexAI automatically handles session expiration.
         This cleans up the local cache only.
         """
-        expired_ids = [
-            sid for sid, session in self._session_cache.items() if session.is_expired
-        ]
+        expired_ids = [sid for sid, session in self._session_cache.items() if session.is_expired]
 
         for session_id in expired_ids:
             del self._session_cache[session_id]
@@ -282,9 +278,7 @@ class VertexAISessionBackend(SessionBackend):
             client = self._get_client()
             sessions = []
 
-            for vertex_session in client.agent_engines.sessions.list(
-                name=self._agent_engine_name
-            ):
+            for vertex_session in client.agent_engines.sessions.list(name=self._agent_engine_name):
                 session_user_id = getattr(vertex_session, "user_id", None)
                 if session_user_id == user_id:
                     session_id = vertex_session.name.split("/")[-1]
@@ -292,7 +286,7 @@ class VertexAISessionBackend(SessionBackend):
                     session = Session(
                         session_id=session_id,
                         user_id=user_id,
-                        expires_at=datetime.datetime.now(datetime.timezone.utc)
+                        expires_at=datetime.datetime.now(datetime.UTC)
                         + datetime.timedelta(hours=24),
                     )
 
@@ -322,10 +316,10 @@ class VertexAISessionBackend(SessionBackend):
         """
         session = await self.get_session(session_id)
         if session:
-            session.expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+            session.expires_at = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
                 seconds=additional_seconds
             )
-            session.updated_at = datetime.datetime.now(datetime.timezone.utc)
+            session.updated_at = datetime.datetime.now(datetime.UTC)
             self._session_cache[session_id] = session
             logger.info(
                 "Session TTL extended in cache",

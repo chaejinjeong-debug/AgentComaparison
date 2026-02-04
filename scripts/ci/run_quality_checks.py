@@ -10,7 +10,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -18,7 +18,7 @@ from pathlib import Path
 class QualityReport:
     """Quality check report."""
 
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     passed: bool = True
     checks: dict[str, dict] = field(default_factory=dict)
     summary: str = ""
@@ -111,9 +111,7 @@ def check_type_safety() -> dict:
 
 def check_security() -> dict:
     """Check bandit security scan results."""
-    exit_code, stdout, stderr = run_command(
-        ["bandit", "-r", "src/", "-f", "json", "-ll", "-ii"]
-    )
+    exit_code, stdout, stderr = run_command(["bandit", "-r", "src/", "-f", "json", "-ll", "-ii"])
 
     if exit_code == 0:
         return {
@@ -145,9 +143,7 @@ def check_security() -> dict:
 
 def check_complexity() -> dict:
     """Check code complexity using radon (if available)."""
-    exit_code, stdout, stderr = run_command(
-        ["radon", "cc", "src/", "-a", "-nc", "--total-average"]
-    )
+    exit_code, stdout, stderr = run_command(["radon", "cc", "src/", "-a", "-nc", "--total-average"])
 
     if exit_code != 0 and "not found" in stderr.lower():
         return {
@@ -183,10 +179,7 @@ def generate_report(checks: dict[str, dict]) -> QualityReport:
     report.checks = checks
 
     # Determine overall pass/fail
-    failed_checks = [
-        name for name, result in checks.items()
-        if result.get("status") == "fail"
-    ]
+    failed_checks = [name for name, result in checks.items() if result.get("status") == "fail"]
 
     if failed_checks:
         report.passed = False
@@ -210,9 +203,7 @@ def print_report(report: QualityReport) -> None:
     for name, result in report.checks.items():
         status = result.get("status", "unknown")
         message = result.get("message", "")
-        icon = {"pass": "[OK]", "fail": "[X]", "warn": "[!]", "skip": "[-]"}.get(
-            status, "[?]"
-        )
+        icon = {"pass": "[OK]", "fail": "[X]", "warn": "[!]", "skip": "[-]"}.get(status, "[?]")
         print(f"{icon} {name}: {message}")
 
     print("-" * 60)

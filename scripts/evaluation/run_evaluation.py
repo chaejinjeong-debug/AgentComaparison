@@ -167,7 +167,9 @@ def main() -> int:
         print(f"\nEvaluation PASSED (accuracy: {summary.quality_metrics.accuracy:.2%})")
         return 0
     else:
-        print(f"\nEvaluation FAILED (accuracy: {summary.quality_metrics.accuracy:.2%} < {args.threshold:.2%})")
+        print(
+            f"\nEvaluation FAILED (accuracy: {summary.quality_metrics.accuracy:.2%} < {args.threshold:.2%})"
+        )
         return 1
 
 

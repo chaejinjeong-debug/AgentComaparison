@@ -126,6 +126,7 @@ async def test_vertex_session_backend():
         print("\nVertexAI Session Backend Test: FAILED")
         print(f"Error: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -180,6 +181,7 @@ async def test_vertex_memory_backend():
         print("\nVertexAI Memory Backend Test: FAILED")
         print(f"Error: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 

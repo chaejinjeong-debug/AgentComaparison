@@ -9,7 +9,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -222,10 +221,12 @@ class BaseAgent(ABC):
         tool_calls = []
         if hasattr(result, "tool_calls"):
             for tc in result.tool_calls:
-                tool_calls.append({
-                    "tool": getattr(tc, "name", "unknown"),
-                    "args": getattr(tc, "args", {}),
-                })
+                tool_calls.append(
+                    {
+                        "tool": getattr(tc, "name", "unknown"),
+                        "args": getattr(tc, "args", {}),
+                    }
+                )
         return tool_calls
 
     @staticmethod

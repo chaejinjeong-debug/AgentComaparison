@@ -9,15 +9,17 @@ Usage:
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 # Mock the GoogleModel and related imports before importing agent
-with patch.dict("sys.modules", {
-    "pydantic_ai.models.google": MagicMock(),
-    "pydantic_ai.providers.google": MagicMock(),
-}):
-    from agent_engine.agent import PydanticAIAgentWrapper
-    from agent_engine.config import AgentConfig, SessionConfig, MemoryConfig
+with patch.dict(
+    "sys.modules",
+    {
+        "pydantic_ai.models.google": MagicMock(),
+        "pydantic_ai.providers.google": MagicMock(),
+    },
+):
+    from agent_engine.config import SessionConfig
     from agent_engine.sessions import SessionManager
     from agent_engine.sessions.models import EventAuthor
 

@@ -5,7 +5,8 @@ Implements TS-004: Tool execution logging.
 
 import functools
 import time
-from typing import Any, Callable, ParamSpec, TypeVar
+from collections.abc import Callable
+from typing import Any, ParamSpec, TypeVar
 
 import structlog
 
@@ -34,6 +35,7 @@ def traced(
     Returns:
         Decorated function
     """
+
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         span_name = name or func.__name__
 
@@ -98,6 +100,7 @@ def metered(
     Returns:
         Decorated function
     """
+
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         metric_name = name or func.__name__
 
@@ -183,6 +186,7 @@ def logged_tool(
     Returns:
         Decorated function
     """
+
     def truncate(value: Any) -> str:
         """Truncate value for logging."""
         s = str(value)
@@ -317,4 +321,5 @@ def asyncio_iscoroutinefunction(func: Callable[..., Any]) -> bool:
         True if coroutine function
     """
     import asyncio
+
     return asyncio.iscoroutinefunction(func)

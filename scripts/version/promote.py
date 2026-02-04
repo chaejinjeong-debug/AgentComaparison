@@ -81,7 +81,9 @@ def main() -> int:
     args = parser.parse_args()
 
     # Initialize registry
-    registry_path = args.registry_path or Path(__file__).parent.parent.parent / "versions" / "registry.yaml"
+    registry_path = (
+        args.registry_path or Path(__file__).parent.parent.parent / "versions" / "registry.yaml"
+    )
     registry = VersionRegistry(registry_path=registry_path)
 
     # Get staging version to promote
@@ -150,7 +152,7 @@ def main() -> int:
         },
     )
 
-    print(f"\nPromotion successful!")
+    print("\nPromotion successful!")
     print(f"  Production version: {prod_registered.version}")
     print(f"  Status: {prod_registered.status.value}")
     print(f"  Promoted at: {prod_registered.deployed_at.isoformat()}")

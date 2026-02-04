@@ -256,7 +256,7 @@ def main() -> int:
             return 1
 
     print("\n=== VPC-SC Setup Complete ===")
-    print(f"\nTo verify the setup, run:")
+    print("\nTo verify the setup, run:")
     print(f"  gcloud access-context-manager perimeters list --policy={policy_id}")
     return 0
 

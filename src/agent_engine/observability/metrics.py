@@ -123,10 +123,8 @@ class MetricsManager:
                 )
             else:
                 # Use console exporter for local development
-                from opentelemetry.sdk.metrics.export import (
-                    ConsoleMetricExporter,
-                    PeriodicExportingMetricReader,
-                )
+                from opentelemetry.sdk.metrics.export import ConsoleMetricExporter
+
                 reader = PeriodicExportingMetricReader(
                     ConsoleMetricExporter(),
                     export_interval_millis=60000,
@@ -286,9 +284,7 @@ class MetricsManager:
 
         # Keep only last 1000 samples
         if len(self._local_metrics["latency_samples"]) > 1000:
-            self._local_metrics["latency_samples"] = (
-                self._local_metrics["latency_samples"][-1000:]
-            )
+            self._local_metrics["latency_samples"] = self._local_metrics["latency_samples"][-1000:]
 
         if self._latency_histogram is not None:
             self._latency_histogram.record(
