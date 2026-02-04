@@ -10,19 +10,21 @@ on:
       - develop
       - 'feature/**'
     paths:
-      - 'AgentEngine/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
       - '.github/workflows/ci.yml'
   pull_request:
     branches:
       - main
       - develop
     paths:
-      - 'AgentEngine/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
       - '.github/workflows/ci.yml'
-
-defaults:
-  run:
-    working-directory: AgentEngine
 
 env:
   PYTHON_VERSION: '3.11'
@@ -41,7 +43,7 @@ jobs:
       - name: Generate cache key
         id: cache-key
         run: |
-          echo "key=uv-${{ runner.os }}-${{ hashFiles('AgentEngine/pyproject.toml', 'AgentEngine/uv.lock') }}" >> $GITHUB_OUTPUT
+          echo "key=uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}" >> $GITHUB_OUTPUT
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -58,7 +60,7 @@ jobs:
         with:
           path: |
             ~/.cache/uv
-            AgentEngine/.venv
+            .venv
           key: ${{ steps.cache-key.outputs.key }}
           restore-keys: |
             uv-${{ runner.os }}-
@@ -92,7 +94,7 @@ jobs:
         with:
           path: |
             ~/.cache/uv
-            AgentEngine/.venv
+            .venv
           key: ${{ needs.setup.outputs.cache-key }}
 
       - name: Run ruff check
@@ -130,7 +132,7 @@ jobs:
         with:
           path: |
             ~/.cache/uv
-            AgentEngine/.venv
+            .venv
           key: ${{ needs.setup.outputs.cache-key }}
 
       - name: Run mypy
@@ -162,7 +164,7 @@ jobs:
         with:
           path: |
             ~/.cache/uv
-            AgentEngine/.venv
+            .venv
           key: ${{ needs.setup.outputs.cache-key }}
 
       - name: Run bandit
@@ -194,7 +196,7 @@ jobs:
         with:
           path: |
             ~/.cache/uv
-            AgentEngine/.venv
+            .venv
           key: ${{ needs.setup.outputs.cache-key }}
 
       - name: Run pytest with coverage
@@ -214,8 +216,8 @@ jobs:
         with:
           name: coverage-reports
           path: |
-            AgentEngine/coverage.xml
-            AgentEngine/coverage_html/
+            coverage.xml
+            coverage_html/
           retention-days: 30
 
   quality-gate:
@@ -241,7 +243,7 @@ jobs:
         with:
           path: |
             ~/.cache/uv
-            AgentEngine/.venv
+            .venv
           key: ${{ needs.setup.outputs.cache-key }}
 
       - name: Run quality gate checks
@@ -254,6 +256,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: quality-report
-          path: AgentEngine/quality_report.json
+          path: quality_report.json
           retention-days: 30
         if: always()

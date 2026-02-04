@@ -7,12 +7,6 @@ on:
   push:
     tags:
       - 'v*'
-    paths:
-      - 'AgentEngine/**'
-
-defaults:
-  run:
-    working-directory: AgentEngine
 
 env:
   PYTHON_VERSION: '3.11'
@@ -45,8 +39,8 @@ jobs:
         with:
           path: |
             ~/.cache/uv
-            AgentEngine/.venv
-          key: uv-${{ runner.os }}-${{ hashFiles('AgentEngine/pyproject.toml', 'AgentEngine/uv.lock') }}
+            .venv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
           restore-keys: |
             uv-${{ runner.os }}-
 
