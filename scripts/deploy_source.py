@@ -146,19 +146,19 @@ def deploy_from_source(
         "python-dotenv>=1.0.0",
     ]
 
-    # Deploy from source
+    # Deploy from source (all params in config dict for source-based deployment)
     deployed_agent = agent_engines.create(
-        source_packages=source_packages,
-        entrypoint_module=ENTRYPOINT_MODULE,
-        entrypoint_object=ENTRYPOINT_OBJECT,
-        class_methods=CLASS_METHODS,
         config={
+            "source_packages": source_packages,
+            "entrypoint_module": ENTRYPOINT_MODULE,
+            "entrypoint_object": ENTRYPOINT_OBJECT,
+            "class_methods": CLASS_METHODS,
             "display_name": display_name,
             "description": description,
-        },
-        requirements=requirements,
-        extra_packages=[],  # Additional local packages if needed
-        agent_config=agent_config,
+            "requirements": requirements,
+            "extra_packages": [],
+            "agent_config": agent_config,
+        }
     )
 
     agent_name = deployed_agent.resource_name
