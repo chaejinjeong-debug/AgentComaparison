@@ -125,13 +125,15 @@ def deploy_from_source(
 
     logger.info("source_packages_verified", packages=source_packages)
 
-    # Create requirements for deployment
-    requirements = [
-        "pydantic-ai-slim[google]>=1.51.0",
-        "google-cloud-aiplatform[agent_engines]>=1.78.0",
-        "structlog>=24.0.0",
-        "python-dotenv>=1.0.0",
-    ]
+    # Create temporary requirements file for deployment
+    requirements_content = """pydantic-ai-slim[google]>=1.51.0
+google-cloud-aiplatform[agent_engines]>=1.78.0
+structlog>=24.0.0
+python-dotenv>=1.0.0
+"""
+    requirements_file = project_root / ".agent_requirements.txt"
+    requirements_file.write_text(requirements_content)
+    logger.info("requirements_file_created", path=str(requirements_file))
 
     # Deploy from source using client.agent_engines.create()
     deployed_agent = client.agent_engines.create(
@@ -141,7 +143,7 @@ def deploy_from_source(
             "entrypoint_object": ENTRYPOINT_OBJECT,
             "display_name": display_name,
             "description": description,
-            "requirements": requirements,
+            "requirements_file": str(requirements_file),
         }
     )
 
