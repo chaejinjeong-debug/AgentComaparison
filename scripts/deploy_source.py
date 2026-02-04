@@ -44,9 +44,10 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
-# Source package configuration - use project root so Python can find agent_engine module
+# Source package configuration - upload src/ directory
+# Agent Engine adds /code/src/ to PYTHONPATH, so agent_engine module is found at /code/src/agent_engine/
 SOURCE_PACKAGES = [
-    ".",  # Project root containing agent_engine/
+    "src",  # Contains agent_engine/ module
 ]
 
 # Entrypoint configuration
