@@ -91,17 +91,20 @@ class PydanticAIAgentWrapper:
 
         Args:
             model: Gemini model name
-            project: GCP project ID
-            location: GCP region
+            project: GCP project ID (falls back to GOOGLE_CLOUD_PROJECT env var)
+            location: GCP region (falls back to GOOGLE_CLOUD_LOCATION env var)
             system_prompt: System prompt for the agent
             tools: Sequence of tool functions to register
             temperature: Model temperature (0.0-2.0)
             max_tokens: Maximum output tokens
             config: Optional full AgentConfig for Phase 2 features
         """
+        import os
+
         self.model_name = model
-        self.project = project
-        self.location = location
+        # Fall back to environment variables for project and location
+        self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+        self.location = location or os.environ.get("GOOGLE_CLOUD_LOCATION", "asia-northeast3")
         self.system_prompt = system_prompt
         self.tools = list(tools) if tools else []
         self.temperature = temperature
