@@ -297,12 +297,10 @@ class PydanticAIAgentWrapper:
             logger.warning("memory_manager_setup_failed", error=str(e))
 
     def _ensure_setup(self) -> None:
-        """Ensure the agent has been set up."""
+        """Ensure the agent has been set up, auto-initializing if needed."""
         if not self._is_setup or self._pydantic_agent is None:
-            raise AgentConfigError(
-                "Agent not set up. Call set_up() before querying.",
-                details={"is_setup": self._is_setup},
-            )
+            logger.info("agent_auto_setup_triggered")
+            self.set_up()
 
     def query(
         self,
