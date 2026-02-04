@@ -21,8 +21,6 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add src to path for local imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import structlog
 

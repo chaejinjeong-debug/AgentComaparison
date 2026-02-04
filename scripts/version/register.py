@@ -12,8 +12,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from agent_engine.version import VersionRegistry
 from agent_engine.version.models import Environment

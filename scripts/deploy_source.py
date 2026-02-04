@@ -20,8 +20,6 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add src to path for local imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import structlog
 
@@ -47,9 +45,8 @@ logger = structlog.get_logger()
 
 
 # Source package configuration
-# Note: Use "src" directory so Python can find "agent_engine" package
 SOURCE_PACKAGES = [
-    "src",  # Contains agent_engine package
+    "agent_engine",  # Main package
 ]
 
 # Entrypoint configuration

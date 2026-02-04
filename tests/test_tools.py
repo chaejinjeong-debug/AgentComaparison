@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from agent_engine.exceptions import ToolExecutionError
 from agent_engine.tools import calculate, convert_timezone, get_current_datetime, search
