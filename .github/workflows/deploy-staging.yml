@@ -4,6 +4,7 @@
 name: Deploy Staging
 
 on:
+  workflow_dispatch:  # 수동 트리거 추가
   workflow_run:
     workflows: ["CI"]
     types:
@@ -19,7 +20,7 @@ jobs:
   deploy-staging:
     name: Deploy to Staging
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     permissions:
       contents: read
