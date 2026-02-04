@@ -176,7 +176,7 @@ jobs:
   test:
     name: Test (pytest)
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, security]
+    needs: [setup, lint, typecheck, security]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -223,7 +223,7 @@ jobs:
   quality-gate:
     name: Quality Gate
     runs-on: ubuntu-latest
-    needs: test
+    needs: [setup, test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
