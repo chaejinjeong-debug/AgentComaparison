@@ -27,14 +27,14 @@ from agent_engine.exceptions import (
     ToolExecutionError,
 )
 
-# Phase 3: Version Management
-from agent_engine.version import (
-    DeploymentInfo,
-    RollbackManager,
-    Version,
-    VersionRegistry,
-    VersionStatus,
-)
+# Phase 3: Version Management - 주석 처리 (Agent Engine 호환성)
+# from agent_engine.version import (
+#     DeploymentInfo,
+#     RollbackManager,
+#     Version,
+#     VersionRegistry,
+#     VersionStatus,
+# )
 
 __version__ = "0.5.0"
 
@@ -62,10 +62,10 @@ __all__ = [
     "AgentConfigError",
     "AgentQueryError",
     "ToolExecutionError",
-    # Phase 3: Version Management
-    "Version",
-    "VersionStatus",
-    "DeploymentInfo",
-    "VersionRegistry",
-    "RollbackManager",
+    # Phase 3: Version Management - 주석 처리 (Agent Engine 호환성)
+    # "Version",
+    # "VersionStatus",
+    # "DeploymentInfo",
+    # "VersionRegistry",
+    # "RollbackManager",
 ]
