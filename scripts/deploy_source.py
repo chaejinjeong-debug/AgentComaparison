@@ -101,8 +101,8 @@ def deploy_from_source(
     Returns:
         Deployed agent resource name
     """
-    from google.cloud import aiplatform
-    from google.cloud.aiplatform import agent_engines
+    import vertexai
+    from vertexai import agent_engines
 
     logger.info(
         "starting_source_deployment",
@@ -117,7 +117,7 @@ def deploy_from_source(
     if staging_bucket:
         init_kwargs["staging_bucket"] = staging_bucket
 
-    aiplatform.init(**init_kwargs)
+    vertexai.init(**init_kwargs)
 
     # Get absolute paths for source packages
     project_root = Path(__file__).parent.parent
@@ -189,8 +189,8 @@ def update_agent_from_source(
     Returns:
         Updated agent resource name
     """
-    from google.cloud import aiplatform
-    from google.cloud.aiplatform import agent_engines
+    import vertexai
+    from vertexai import agent_engines
 
     logger.info(
         "starting_source_update",
@@ -204,7 +204,7 @@ def update_agent_from_source(
     if staging_bucket:
         init_kwargs["staging_bucket"] = staging_bucket
 
-    aiplatform.init(**init_kwargs)
+    vertexai.init(**init_kwargs)
 
     # Get absolute paths for source packages
     project_root = Path(__file__).parent.parent
@@ -240,10 +240,10 @@ def verify_deployment(agent_name: str, project: str, location: str) -> dict:
     Returns:
         Verification result dictionary
     """
-    from google.cloud import aiplatform
-    from google.cloud.aiplatform import agent_engines
+    import vertexai
+    from vertexai import agent_engines
 
-    aiplatform.init(project=project, location=location)
+    vertexai.init(project=project, location=location)
 
     agent = agent_engines.get(agent_name)
 
