@@ -51,7 +51,8 @@ SOURCE_PACKAGES = [
 ]
 
 # Entrypoint configuration
-ENTRYPOINT_MODULE = "agent_engine.agent"
+# Source is uploaded to /code/src/, so module path includes src prefix
+ENTRYPOINT_MODULE = "src.agent_engine.agent"
 ENTRYPOINT_OBJECT = "PydanticAIAgentWrapper"
 
 # Class methods exposed to Agent Engine
