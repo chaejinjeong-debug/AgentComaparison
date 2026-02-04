@@ -47,8 +47,9 @@ logger = structlog.get_logger()
 
 
 # Source package configuration
+# Note: Use "src" directory so Python can find "agent_engine" package
 SOURCE_PACKAGES = [
-    "src/agent_engine",  # Main package
+    "src",  # Contains agent_engine package
 ]
 
 # Entrypoint configuration
