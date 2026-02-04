@@ -9,14 +9,21 @@ Usage:
 """
 
 import datetime
+import os
 import time
+from pathlib import Path
+
 import vertexai
+from dotenv import load_dotenv
 from vertexai.preview import reasoning_engines
 
+# Load .env from project root
+load_dotenv(Path(__file__).parent.parent / ".env")
+
 # Configuration
-PROJECT_ID = "heum-alfred-evidence-clf-dev"
-LOCATION = "asia-northeast3"
-AGENT_ENGINE_ID = "2322168557862912"  # Session-aware agent
+PROJECT_ID = os.getenv("AGENT_PROJECT_ID", "")
+LOCATION = os.getenv("AGENT_LOCATION", "asia-northeast3")
+AGENT_ENGINE_ID = os.getenv("AGENT_ENGINE_ID", "")
 USER_ID = "luke-test-user"
 
 
@@ -46,7 +53,7 @@ def main():
     print("-" * 40)
     print("Step 1: Creating a session")
     print("-" * 40)
-    expire_time = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(hours=25)
+    expire_time = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(hours=25)
     result = client.agent_engines.sessions.create(
         name=agent_engine_name,
         user_id=USER_ID,
@@ -73,7 +80,7 @@ def main():
         name=session_name,
         author="user",
         invocation_id="1",
-        timestamp=datetime.datetime.now(tz=datetime.timezone.utc),
+        timestamp=datetime.datetime.now(tz=datetime.UTC),
         config={"content": {"role": "user", "parts": [{"text": message1}]}},
     )
 
@@ -87,7 +94,7 @@ def main():
         name=session_name,
         author="agent",
         invocation_id="1",
-        timestamp=datetime.datetime.now(tz=datetime.timezone.utc),
+        timestamp=datetime.datetime.now(tz=datetime.UTC),
         config={"content": {"role": "model", "parts": [{"text": answer1}]}},
     )
     print()
@@ -124,7 +131,7 @@ def main():
 [Current message]
 {message2}"""
 
-    print(f"\n[Context sent to agent]")
+    print("\n[Context sent to agent]")
     print(full_message)
     print()
 

@@ -108,7 +108,7 @@ class SessionAwareAgent:
 
         # Create new session
         try:
-            expire_time = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(hours=25)
+            expire_time = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(hours=25)
             result = self._vertex_client.agent_engines.sessions.create(
                 name=self._agent_engine_name,
                 user_id=user_id,
@@ -182,7 +182,7 @@ class SessionAwareAgent:
                 name=session_name,
                 author=author,
                 invocation_id=invocation_id,
-                timestamp=datetime.datetime.now(tz=datetime.timezone.utc),
+                timestamp=datetime.datetime.now(tz=datetime.UTC),
                 config={"content": {"role": role, "parts": [{"text": text}]}},
             )
         except Exception as e:
@@ -335,9 +335,17 @@ def deploy_agent(
 
 
 def main():
+    import os
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    # Load .env from project root
+    load_dotenv(Path(__file__).parent.parent / ".env")
+
     parser = argparse.ArgumentParser(description="Deploy session-aware agent")
-    parser.add_argument("--project", default="heum-alfred-evidence-clf-dev")
-    parser.add_argument("--location", default="asia-northeast3")
+    parser.add_argument("--project", default=os.getenv("AGENT_PROJECT_ID", ""))
+    parser.add_argument("--location", default=os.getenv("AGENT_LOCATION", "asia-northeast3"))
     parser.add_argument("--display-name", default="session-aware-agent")
     parser.add_argument("--staging-bucket", default=None)
 

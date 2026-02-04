@@ -6,17 +6,21 @@ This script tests the VertexAI Sessions API using direct REST calls.
 
 import asyncio
 import json
-import sys
+import os
 from pathlib import Path
 
 import google.auth
 import google.auth.transport.requests
 import httpx
+from dotenv import load_dotenv
+
+# Load .env from project root
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Configuration
-PROJECT_ID = "heum-alfred-evidence-clf-dev"
-LOCATION = "asia-northeast3"
-AGENT_ENGINE_ID = "6406440838678708224"
+PROJECT_ID = os.getenv("AGENT_PROJECT_ID", "")
+LOCATION = os.getenv("AGENT_LOCATION", "asia-northeast3")
+AGENT_ENGINE_ID = os.getenv("AGENT_ENGINE_ID", "")
 
 # API endpoints
 BASE_URL = f"https://{LOCATION}-aiplatform.googleapis.com/v1"

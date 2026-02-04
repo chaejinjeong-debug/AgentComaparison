@@ -5,8 +5,14 @@ This script tests the VertexAI backend integration for Sessions and Memory Bank.
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from project root
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -22,9 +28,9 @@ from agent_engine.sessions import SessionManager
 from agent_engine.sessions.models import EventAuthor
 
 # Configuration
-PROJECT_ID = "heum-alfred-evidence-clf-dev"
-LOCATION = "asia-northeast3"
-AGENT_ENGINE_ID = "6406440838678708224"
+PROJECT_ID = os.getenv("AGENT_PROJECT_ID", "")
+LOCATION = os.getenv("AGENT_LOCATION", "asia-northeast3")
+AGENT_ENGINE_ID = os.getenv("AGENT_ENGINE_ID", "")
 
 
 async def test_inmemory_backend():
@@ -117,7 +123,7 @@ async def test_vertex_session_backend():
         return True
 
     except Exception as e:
-        print(f"\nVertexAI Session Backend Test: FAILED")
+        print("\nVertexAI Session Backend Test: FAILED")
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
@@ -171,7 +177,7 @@ async def test_vertex_memory_backend():
         return True
 
     except Exception as e:
-        print(f"\nVertexAI Memory Backend Test: FAILED")
+        print("\nVertexAI Memory Backend Test: FAILED")
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
