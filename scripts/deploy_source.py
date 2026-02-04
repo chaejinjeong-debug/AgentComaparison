@@ -141,6 +141,7 @@ python-dotenv>=1.0.0
             "source_packages": source_packages,
             "entrypoint_module": ENTRYPOINT_MODULE,
             "entrypoint_object": ENTRYPOINT_OBJECT,
+            "class_methods": CLASS_METHODS,
             "display_name": display_name,
             "description": description,
             "requirements_file": str(requirements_file),
