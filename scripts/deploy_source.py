@@ -102,7 +102,6 @@ def deploy_from_source(
         Deployed agent resource name
     """
     import vertexai
-    from vertexai import agent_engines
 
     logger.info(
         "starting_source_deployment",
@@ -112,12 +111,8 @@ def deploy_from_source(
         staging_bucket=staging_bucket,
     )
 
-    # Initialize Vertex AI
-    init_kwargs = {"project": project, "location": location}
-    if staging_bucket:
-        init_kwargs["staging_bucket"] = staging_bucket
-
-    vertexai.init(**init_kwargs)
+    # Create Vertex AI client
+    client = vertexai.Client(project=project, location=location)
 
     # Get absolute paths for source packages
     project_root = Path(__file__).parent.parent
@@ -130,14 +125,6 @@ def deploy_from_source(
 
     logger.info("source_packages_verified", packages=source_packages)
 
-    # Configuration for the agent instance
-    agent_config = {
-        "model": model,
-        "project": project,
-        "location": location,
-        "system_prompt": system_prompt,
-    }
-
     # Create requirements for deployment
     requirements = [
         "pydantic-ai-slim[google]>=1.51.0",
@@ -146,18 +133,15 @@ def deploy_from_source(
         "python-dotenv>=1.0.0",
     ]
 
-    # Deploy from source (all params in config dict for source-based deployment)
-    deployed_agent = agent_engines.create(
+    # Deploy from source using client.agent_engines.create()
+    deployed_agent = client.agent_engines.create(
         config={
             "source_packages": source_packages,
             "entrypoint_module": ENTRYPOINT_MODULE,
             "entrypoint_object": ENTRYPOINT_OBJECT,
-            "class_methods": CLASS_METHODS,
             "display_name": display_name,
             "description": description,
             "requirements": requirements,
-            "extra_packages": [],
-            "agent_config": agent_config,
         }
     )
 
@@ -190,7 +174,6 @@ def update_agent_from_source(
         Updated agent resource name
     """
     import vertexai
-    from vertexai import agent_engines
 
     logger.info(
         "starting_source_update",
@@ -199,26 +182,23 @@ def update_agent_from_source(
         location=location,
     )
 
-    # Initialize Vertex AI
-    init_kwargs = {"project": project, "location": location}
-    if staging_bucket:
-        init_kwargs["staging_bucket"] = staging_bucket
-
-    vertexai.init(**init_kwargs)
+    # Create Vertex AI client
+    client = vertexai.Client(project=project, location=location)
 
     # Get absolute paths for source packages
     project_root = Path(__file__).parent.parent
     source_packages = [str(project_root / pkg) for pkg in SOURCE_PACKAGES]
 
     # Get existing agent
-    agent = agent_engines.get(agent_name)
+    agent = client.agent_engines.get(agent_name)
 
     # Update from source
     agent.update(
-        source_packages=source_packages,
-        entrypoint_module=ENTRYPOINT_MODULE,
-        entrypoint_object=ENTRYPOINT_OBJECT,
-        class_methods=CLASS_METHODS,
+        config={
+            "source_packages": source_packages,
+            "entrypoint_module": ENTRYPOINT_MODULE,
+            "entrypoint_object": ENTRYPOINT_OBJECT,
+        }
     )
 
     logger.info(
@@ -241,11 +221,11 @@ def verify_deployment(agent_name: str, project: str, location: str) -> dict:
         Verification result dictionary
     """
     import vertexai
-    from vertexai import agent_engines
 
-    vertexai.init(project=project, location=location)
+    # Create Vertex AI client
+    client = vertexai.Client(project=project, location=location)
 
-    agent = agent_engines.get(agent_name)
+    agent = client.agent_engines.get(agent_name)
 
     # Run a test query
     test_message = "Hello! Can you confirm you are working correctly?"
