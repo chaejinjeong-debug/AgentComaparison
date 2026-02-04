@@ -102,6 +102,7 @@ def deploy_from_source(
         Deployed agent resource name
     """
     from google.cloud import aiplatform
+    from google.cloud.aiplatform import agent_engines
 
     logger.info(
         "starting_source_deployment",
@@ -146,7 +147,7 @@ def deploy_from_source(
     ]
 
     # Deploy from source
-    deployed_agent = aiplatform.agent_engines.create(
+    deployed_agent = agent_engines.create(
         source_packages=source_packages,
         entrypoint_module=ENTRYPOINT_MODULE,
         entrypoint_object=ENTRYPOINT_OBJECT,
@@ -189,6 +190,7 @@ def update_agent_from_source(
         Updated agent resource name
     """
     from google.cloud import aiplatform
+    from google.cloud.aiplatform import agent_engines
 
     logger.info(
         "starting_source_update",
@@ -209,7 +211,7 @@ def update_agent_from_source(
     source_packages = [str(project_root / pkg) for pkg in SOURCE_PACKAGES]
 
     # Get existing agent
-    agent = aiplatform.agent_engines.get(agent_name)
+    agent = agent_engines.get(agent_name)
 
     # Update from source
     agent.update(
@@ -239,10 +241,11 @@ def verify_deployment(agent_name: str, project: str, location: str) -> dict:
         Verification result dictionary
     """
     from google.cloud import aiplatform
+    from google.cloud.aiplatform import agent_engines
 
     aiplatform.init(project=project, location=location)
 
-    agent = aiplatform.agent_engines.get(agent_name)
+    agent = agent_engines.get(agent_name)
 
     # Run a test query
     test_message = "Hello! Can you confirm you are working correctly?"
