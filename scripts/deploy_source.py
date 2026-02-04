@@ -156,8 +156,7 @@ pyyaml>=6.0.3
             "description": description,
             "requirements_file": str(requirements_file),
             "env_vars": {
-                "GOOGLE_CLOUD_PROJECT": project,
-                "GOOGLE_CLOUD_LOCATION": location,
+                "AGENT_LOCATION": location,
             },
         }
     )

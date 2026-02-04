@@ -103,8 +103,9 @@ class PydanticAIAgentWrapper:
 
         self.model_name = model
         # Fall back to environment variables for project and location
-        self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT", "")
-        self.location = location or os.environ.get("GOOGLE_CLOUD_LOCATION", "asia-northeast3")
+        # GOOGLE_CLOUD_PROJECT is set automatically by Agent Engine
+        self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT", "") or os.environ.get("AGENT_PROJECT_ID", "")
+        self.location = location or os.environ.get("AGENT_LOCATION", "asia-northeast3")
         self.system_prompt = system_prompt
         self.tools = list(tools) if tools else []
         self.temperature = temperature
