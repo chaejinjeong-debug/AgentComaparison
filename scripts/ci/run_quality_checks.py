@@ -63,7 +63,9 @@ def check_coverage(min_coverage: float = 80.0) -> dict:
 
 def check_lint() -> dict:
     """Check ruff lint status."""
-    exit_code, stdout, stderr = run_command(["ruff", "check", "src/", "--output-format=json"])
+    exit_code, stdout, stderr = run_command(
+        ["ruff", "check", "agent_engine/", "--output-format=json"]
+    )
 
     if exit_code == 0:
         return {
@@ -90,7 +92,7 @@ def check_lint() -> dict:
 def check_type_safety() -> dict:
     """Check mypy type safety."""
     exit_code, stdout, stderr = run_command(
-        ["mypy", "src/", "--ignore-missing-imports", "--no-error-summary"]
+        ["mypy", "agent_engine/", "--ignore-missing-imports", "--no-error-summary"]
     )
 
     if exit_code == 0:
@@ -111,7 +113,9 @@ def check_type_safety() -> dict:
 
 def check_security() -> dict:
     """Check bandit security scan results."""
-    exit_code, stdout, stderr = run_command(["bandit", "-r", "src/", "-f", "json", "-ll", "-ii"])
+    exit_code, stdout, stderr = run_command(
+        ["bandit", "-r", "agent_engine/", "-f", "json", "-ll", "-ii"]
+    )
 
     if exit_code == 0:
         return {
@@ -143,7 +147,9 @@ def check_security() -> dict:
 
 def check_complexity() -> dict:
     """Check code complexity using radon (if available)."""
-    exit_code, stdout, stderr = run_command(["radon", "cc", "src/", "-a", "-nc", "--total-average"])
+    exit_code, stdout, stderr = run_command(
+        ["radon", "cc", "agent_engine/", "-a", "-nc", "--total-average"]
+    )
 
     if exit_code != 0 and "not found" in stderr.lower():
         return {

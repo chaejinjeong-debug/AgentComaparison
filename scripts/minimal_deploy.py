@@ -226,9 +226,7 @@ def main() -> None:
         help=f"Display name (default: {ENV_DISPLAY_NAME})",
     )
     deploy_parser.add_argument("--description", default=ENV_DESCRIPTION, help="Description")
-    deploy_parser.add_argument(
-        "--system-prompt", default=ENV_SYSTEM_PROMPT, help="System prompt"
-    )
+    deploy_parser.add_argument("--system-prompt", default=ENV_SYSTEM_PROMPT, help="System prompt")
     deploy_parser.add_argument("--staging-bucket", help="GCS staging bucket")
 
     # List command

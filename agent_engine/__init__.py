@@ -21,9 +21,6 @@ from agent_engine.constants import (
     DEFAULT_SYSTEM_PROMPT,
     DEFAULT_TEMPERATURE,
 )
-from agent_engine.envs import Env
-
-# Core module (refactored components)
 from agent_engine.core import (
     AgentEngineWrapper,
     AgentResult,
@@ -32,6 +29,7 @@ from agent_engine.core import (
     PydanticAIAgent,
     ResultProcessor,
 )
+from agent_engine.envs import Env
 from agent_engine.exceptions import (
     AgentConfigError,
     AgentError,
