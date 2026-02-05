@@ -53,19 +53,12 @@ ENTRYPOINT_MODULE = "agent_engine.agent"
 ENTRYPOINT_OBJECT = "agent"
 
 # Class methods exposed to Agent Engine
+# Supported api_mode values: "", "async", "stream", "async_stream", "a2a_extension"
+# Using api_mode="async" for query to run it asynchronously in Agent Engine
 CLASS_METHODS = [
     {
         "name": "query",
-        "api_mode": "SYNC",
-        "parameters": [
-            {"name": "message", "type": "STRING", "required": True},
-            {"name": "user_id", "type": "STRING", "required": False},
-            {"name": "session_id", "type": "STRING", "required": False},
-        ],
-    },
-    {
-        "name": "aquery",
-        "api_mode": "ASYNC",
+        "api_mode": "async",  # Use async mode to avoid event loop conflicts
         "parameters": [
             {"name": "message", "type": "STRING", "required": True},
             {"name": "user_id", "type": "STRING", "required": False},
@@ -140,14 +133,15 @@ def deploy_from_source(
             "display_name": display_name,
             "description": description,
             "requirements_file": "agent_engine/requirements.txt",
+            # Note: GOOGLE_CLOUD_PROJECT is automatically set by Agent Engine runtime
             "env_vars": {
-                "GOOGLE_CLOUD_PROJECT": project,
                 "AGENT_LOCATION": location,
+                "AGENT_MODEL": model,  # Model to use for the agent
             },
         }
     )
 
-    agent_name = deployed_agent.resource_name
+    agent_name = deployed_agent.api_resource.name
 
     logger.info(
         "source_deployment_complete",
@@ -196,7 +190,7 @@ def update_agent_from_source(
     source_packages = SOURCE_PACKAGES
 
     # Get existing agent
-    agent = client.agent_engines.get(agent_name)
+    agent = client.agent_engines.get(name=agent_name)
 
     # Update from source
     agent.update(
@@ -210,10 +204,10 @@ def update_agent_from_source(
 
     logger.info(
         "source_update_complete",
-        agent_name=agent.resource_name,
+        agent_name=agent.api_resource.name,
     )
 
-    return agent.resource_name
+    return agent.api_resource.name
 
 
 def verify_deployment(agent_name: str, project: str, location: str) -> dict:
@@ -232,11 +226,22 @@ def verify_deployment(agent_name: str, project: str, location: str) -> dict:
     # Create Vertex AI client
     client = vertexai.Client(project=project, location=location)
 
-    agent = client.agent_engines.get(agent_name)
+    agent = client.agent_engines.get(name=agent_name)
 
-    # Run a test query
+    # Run a test query (using async method)
+    import asyncio
+
     test_message = "Hello! Can you confirm you are working correctly?"
-    response = agent.query(message=test_message)
+
+    # The agent.query returns a coroutine for async mode, need to await it
+    async def run_query():
+        result = agent.query(message=test_message)
+        # If result is a coroutine, await it
+        if asyncio.iscoroutine(result):
+            return await result
+        return result
+
+    response = asyncio.run(run_query())
 
     return {
         "agent_name": agent_name,

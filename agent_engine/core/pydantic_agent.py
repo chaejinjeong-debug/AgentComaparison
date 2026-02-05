@@ -6,6 +6,7 @@ the BaseAgent interface using Pydantic AI and Google's Gemini models.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -193,6 +194,9 @@ class PydanticAIAgent(BaseAgent):
 
     def run_sync(self, message: str, **kwargs: Any) -> AgentResult:
         """Execute a synchronous query against the agent.
+
+        Note: For Agent Engine deployment, prefer using run_async() via aquery method
+        as sync operations may have event loop conflicts in the runtime environment.
 
         Args:
             message: The user message to process

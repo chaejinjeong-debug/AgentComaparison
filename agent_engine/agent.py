@@ -78,9 +78,9 @@ class PydanticAIAgentWrapper:
 
     def __init__(
         self,
-        model: str = "gemini-2.5-pro",
+        model: str = "",
         project: str = "",
-        location: str = "asia-northeast3",
+        location: str = "",
         system_prompt: str = "You are a helpful AI assistant.",
         tools: Sequence[Callable[..., Any]] | None = None,
         temperature: float = 0.7,
@@ -90,9 +90,9 @@ class PydanticAIAgentWrapper:
         """Initialize the agent wrapper with configuration parameters.
 
         Args:
-            model: Gemini model name
+            model: Gemini model name (falls back to AGENT_MODEL env var)
             project: GCP project ID (falls back to GOOGLE_CLOUD_PROJECT env var)
-            location: GCP region (falls back to GOOGLE_CLOUD_LOCATION env var)
+            location: GCP region (falls back to AGENT_LOCATION env var)
             system_prompt: System prompt for the agent
             tools: Sequence of tool functions to register
             temperature: Model temperature (0.0-2.0)
@@ -101,9 +101,9 @@ class PydanticAIAgentWrapper:
         """
         import os
 
-        self.model_name = model
-        # Fall back to environment variables for project and location
+        # Fall back to environment variables for model, project, and location
         # GOOGLE_CLOUD_PROJECT is set automatically by Agent Engine
+        self.model_name = model or os.environ.get("AGENT_MODEL", "gemini-2.5-flash")
         self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT", "") or os.environ.get("AGENT_PROJECT_ID", "")
         self.location = location or os.environ.get("AGENT_LOCATION", "asia-northeast3")
         self.system_prompt = system_prompt
@@ -306,7 +306,7 @@ class PydanticAIAgentWrapper:
             logger.info("agent_auto_setup_triggered")
             self.set_up()
 
-    def query(
+    async def query(
         self,
         message: str,
         user_id: str | None = None,
@@ -314,7 +314,10 @@ class PydanticAIAgentWrapper:
         context: dict[str, Any] | None = None,
         memories: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Execute a synchronous query against the agent.
+        """Execute an asynchronous query against the agent.
+
+        Note: This method is async for compatibility with Agent Engine runtime.
+        For sync usage, use query_sync() instead.
 
         Args:
             message: User message to process
@@ -350,18 +353,18 @@ class PydanticAIAgentWrapper:
 
             # Retrieve memories if memory manager is available
             if memories is None and self._memory_manager and user_id:
-                memories = self._get_user_memories(user_id, message)
+                memories = await self._aget_user_memories(user_id, message)
 
             # Retrieve session history if session_id is provided
             session_history = None
             if session_id and self._session_manager:
-                session_history = self._get_session_history_sync(session_id)
+                session_history = await self._aget_session_history(session_id)
 
             # Build the full message with context
             full_message = self._build_message(message, context, memories, session_history)
 
-            # Run the agent synchronously using PydanticAIAgent
-            result = self._pydantic_agent.run_sync(full_message)
+            # Run the agent asynchronously using PydanticAIAgent
+            result = await self._pydantic_agent.run_async(full_message)
 
             # Process result using ResultProcessor
             response_data = self._result_processor.process(
@@ -426,6 +429,8 @@ class PydanticAIAgentWrapper:
     ) -> dict[str, Any]:
         """Execute an asynchronous query against the agent.
 
+        This is an alias for query() for backward compatibility.
+
         Args:
             message: User message to process
             user_id: Optional user identifier
@@ -434,97 +439,18 @@ class PydanticAIAgentWrapper:
             memories: Optional list of retrieved memories
 
         Returns:
-            Dictionary containing:
-                - response: Agent response text
-                - tool_calls: List of executed tools
-                - usage: Token usage information
-                - metadata: Query metadata
+            Dictionary containing response data
 
         Raises:
             AgentQueryError: If the query fails
         """
-        self._ensure_setup()
-
-        start_time = datetime.now(UTC)
-
-        # Record request metric
-        if self._metrics_manager:
-            self._metrics_manager.record_request(method="aquery", user_id=user_id)
-
-        try:
-            # Set user context for memory tools
-            if user_id:
-                from agent_engine.tools.memory_tools import set_current_user
-
-                set_current_user(user_id)
-
-            # Retrieve memories if memory manager is available
-            if memories is None and self._memory_manager and user_id:
-                memories = await self._aget_user_memories(user_id, message)
-
-            # Retrieve session history if session_id is provided
-            session_history = None
-            if session_id and self._session_manager:
-                session_history = await self._aget_session_history(session_id)
-
-            # Build the full message with context
-            full_message = self._build_message(message, context, memories, session_history)
-
-            # Run the agent asynchronously using PydanticAIAgent
-            result = await self._pydantic_agent.run_async(full_message)
-
-            # Process result using ResultProcessor
-            response_data = self._result_processor.process(
-                result=result,
-                user_id=user_id,
-                session_id=session_id,
-                start_time=start_time,
-            )
-
-            # Record metrics
-            latency_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
-            if self._metrics_manager:
-                self._metrics_manager.record_latency(latency_ms, method="aquery")
-                if "usage" in response_data and response_data["usage"]:
-                    self._metrics_manager.record_tokens(
-                        input_tokens=response_data["usage"].get("prompt_tokens", 0),
-                        output_tokens=response_data["usage"].get("completion_tokens", 0),
-                        model=self.model_name,
-                    )
-
-            logger.info(
-                "async_query_completed",
-                user_id=user_id,
-                session_id=session_id,
-                latency_ms=latency_ms,
-            )
-
-            return response_data
-
-        except ToolExecutionError:
-            if self._metrics_manager:
-                self._metrics_manager.record_error("ToolExecutionError", method="aquery")
-            raise
-        except AgentQueryError:
-            if self._metrics_manager:
-                self._metrics_manager.record_error("AgentQueryError", method="aquery")
-            raise
-        except Exception as e:
-            if self._metrics_manager:
-                self._metrics_manager.record_error(type(e).__name__, method="aquery")
-            logger.error(
-                "async_query_failed",
-                user_id=user_id,
-                session_id=session_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            raise AgentQueryError(
-                f"Async query failed: {e}",
-                user_id=user_id,
-                session_id=session_id,
-                details={"error_type": type(e).__name__},
-            ) from e
+        return await self.query(
+            message=message,
+            user_id=user_id,
+            session_id=session_id,
+            context=context,
+            memories=memories,
+        )
 
     async def query_with_session(
         self,
