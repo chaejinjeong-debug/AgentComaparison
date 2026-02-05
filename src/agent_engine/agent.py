@@ -41,7 +41,7 @@ from agent_engine.exceptions import AgentConfigError, AgentQueryError, ToolExecu
 logger = structlog.get_logger()
 
 # Re-export StreamChunk for backward compatibility
-__all__ = ["PydanticAIAgentWrapper", "StreamChunk"]
+__all__ = ["PydanticAIAgentWrapper", "StreamChunk", "agent"]
 
 
 class PydanticAIAgentWrapper:
@@ -1079,3 +1079,8 @@ class PydanticAIAgentWrapper:
             stats["metrics"] = self._metrics_manager.get_stats()
 
         return stats
+
+
+# Module-level instance for Agent Engine deployment
+# Agent Engine requires an instance, not a class
+agent = PydanticAIAgentWrapper()
