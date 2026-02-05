@@ -44,10 +44,10 @@ structlog.configure(
 logger = structlog.get_logger()
 
 
-# Source package configuration - upload agent_engine directly
+# Source package configuration - upload src directory contents
 # This places agent_engine/ at /code/agent_engine/ which is in PYTHONPATH
 SOURCE_PACKAGES = [
-    "src/agent_engine",  # Module directory itself
+    "src",  # Upload entire src/ directory so agent_engine is at /code/agent_engine/
 ]
 
 # Entrypoint configuration
