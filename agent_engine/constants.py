@@ -7,7 +7,9 @@ the platform to ensure consistency and maintainability.
 # =============================================================================
 # Model Settings
 # =============================================================================
-DEFAULT_MODEL = "gemini-2.5-pro"
+# Note: gemini-2.0-flash-001 is available in most regions including asia-northeast3
+# gemini-2.5-pro may not be available in all regions
+DEFAULT_MODEL = "gemini-2.0-flash-001"
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 4096
 DEFAULT_LOCATION = "asia-northeast3"
