@@ -19,6 +19,13 @@ Usage:
         --location us-central1 \
         --agent-resource projects/my-project/locations/us-central1/agentEngines/my-agent
 
+    # 에이전트가 asia-northeast3에 있지만 평가는 us-central1에서 실행
+    python scripts/evaluation/run_genai_evaluation_v2.py \
+        --project my-project \
+        --location asia-northeast3 \
+        --eval-location us-central1 \
+        --agent-resource projects/my-project/locations/asia-northeast3/agentEngines/my-agent
+
     # Dry-run 모드 (API 호출 없이 설정 확인)
     python scripts/evaluation/run_genai_evaluation_v2.py \
         --project my-project \
@@ -41,6 +48,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
+import inspect
 import json
 import sys
 from datetime import UTC, datetime
@@ -101,7 +110,12 @@ Note: This V2 script supports non-ADK agents (like PydanticAIAgentWrapper) using
         "--location",
         "-l",
         default="us-central1",
-        help="GCP Region (default: us-central1)",
+        help="GCP Region where the agent is deployed (default: us-central1)",
+    )
+    parser.add_argument(
+        "--eval-location",
+        default="us-central1",
+        help="GCP Region for Evaluation Service (must be us-central1, default: us-central1)",
     )
     parser.add_argument(
         "--agent-resource",
@@ -171,7 +185,8 @@ def print_config(args: argparse.Namespace, test_cases: list[dict]) -> None:
     print("(Non-ADK Agent Support - 2-Step Evaluation)")
     print("=" * 60)
     print(f"\nProject: {args.project}")
-    print(f"Location: {args.location}")
+    print(f"Agent Location: {args.location}")
+    print(f"Eval Location: {args.eval_location}")
     print(f"Agent Resource: {args.agent_resource}")
     print(f"\nMetrics to evaluate:")
     for metric in args.metrics:
@@ -238,15 +253,16 @@ def run_dry_mode(args: argparse.Namespace, test_cases: list[dict]) -> int:
     return 0
 
 
-def collect_responses(
+async def collect_responses_async(
     client, agent_resource: str, prompts: list[str], verbose: bool = False
 ) -> list[str]:
-    """Collect responses from the deployed agent.
+    """Collect responses from the deployed agent (async version).
 
     Args:
         client: Vertex AI client
         agent_resource: Agent Engine resource name
         prompts: List of prompts to send
+        verbose: Whether to print verbose output
 
     Returns:
         List of responses
@@ -260,6 +276,11 @@ def collect_responses(
 
         try:
             response = agent.query(message=prompt)
+
+            # Handle coroutine if returned
+            if inspect.iscoroutine(response):
+                response = await response
+
             # Extract text from response
             if isinstance(response, dict):
                 response_text = response.get("response", str(response))
@@ -275,6 +296,23 @@ def collect_responses(
             responses.append(f"[ERROR] {e}")
 
     return responses
+
+
+def collect_responses(
+    client, agent_resource: str, prompts: list[str], verbose: bool = False
+) -> list[str]:
+    """Collect responses from the deployed agent.
+
+    Args:
+        client: Vertex AI client
+        agent_resource: Agent Engine resource name
+        prompts: List of prompts to send
+        verbose: Whether to print verbose output
+
+    Returns:
+        List of responses
+    """
+    return asyncio.run(collect_responses_async(client, agent_resource, prompts, verbose))
 
 
 def run_evaluation(args: argparse.Namespace, test_cases: list[dict]) -> int:
@@ -316,16 +354,25 @@ def run_evaluation(args: argparse.Namespace, test_cases: list[dict]) -> int:
         num_cases = min(num_cases, args.max_prompts)
         test_cases = test_cases[:num_cases]
 
-    # 1. Initialize Vertex AI
-    print("\n[1/4] Initializing Vertex AI client...")
-    vertexai.init(project=args.project, location=args.location)
+    # 1. Initialize Vertex AI clients
+    print("\n[1/4] Initializing Vertex AI clients...")
 
-    client = Client(
+    # Agent client (for querying the agent in its deployed region)
+    vertexai.init(project=args.project, location=args.location)
+    agent_client = Client(
         project=args.project,
         location=args.location,
         http_options=genai_types.HttpOptions(api_version="v1beta1"),
     )
-    print("  Client initialized successfully")
+    print(f"  Agent client initialized (location: {args.location})")
+
+    # Eval client (for evaluation service - must be in supported region like us-central1)
+    eval_client = Client(
+        project=args.project,
+        location=args.eval_location,
+        http_options=genai_types.HttpOptions(api_version="v1beta1"),
+    )
+    print(f"  Eval client initialized (location: {args.eval_location})")
 
     # 2. Collect responses from agent
     print(f"\n[2/4] Collecting responses from agent ({num_cases} prompts)...")
@@ -335,7 +382,7 @@ def run_evaluation(args: argparse.Namespace, test_cases: list[dict]) -> int:
 
     try:
         responses = collect_responses(
-            client, args.agent_resource, prompts, verbose=args.verbose
+            agent_client, args.agent_resource, prompts, verbose=args.verbose
         )
         print(f"  Collected {len(responses)} responses")
     except Exception as e:
@@ -375,7 +422,8 @@ def run_evaluation(args: argparse.Namespace, test_cases: list[dict]) -> int:
 
     try:
         # Use evaluate() for response-only evaluation (non-ADK)
-        eval_result = client.evals.evaluate(
+        # Note: Evaluation service must be in a supported region (us-central1)
+        eval_result = eval_client.evals.evaluate(
             dataset=eval_df,
             metrics=metric_objects,
         )
