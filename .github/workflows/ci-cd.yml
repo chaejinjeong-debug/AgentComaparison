@@ -391,10 +391,9 @@ jobs:
         run: |
           source .venv/bin/activate
           echo "=== Verifying staging deployment ==="
-          gcloud ai agent-engines list \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
-            --location=asia-northeast3 \
-            --format="table(name,displayName,state)"
+          python scripts/ci/verify_deployment.py \
+            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --location asia-northeast3
 
   # ============================================================================
   # Agent Evaluation
@@ -589,10 +588,9 @@ jobs:
         run: |
           source .venv/bin/activate
           echo "=== Verifying production deployment ==="
-          gcloud ai agent-engines list \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
-            --location=asia-northeast3 \
-            --format="table(name,displayName,state)"
+          python scripts/ci/verify_deployment.py \
+            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --location asia-northeast3
 
       - name: Generate Release Notes
         id: release-notes
