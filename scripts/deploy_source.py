@@ -141,6 +141,7 @@ def deploy_from_source(
             "description": description,
             "requirements_file": "agent_engine/requirements.txt",
             "env_vars": {
+                "GOOGLE_CLOUD_PROJECT": project,
                 "AGENT_LOCATION": location,
             },
         }
