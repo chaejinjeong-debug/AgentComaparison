@@ -10,7 +10,7 @@ on:
       - develop
       - 'feature/**'
     paths:
-      - 'src/**'
+      - 'agent_engine/**'
       - 'tests/**'
       - 'scripts/**'
       - 'pyproject.toml'
@@ -20,7 +20,7 @@ on:
       - main
       - develop
     paths:
-      - 'src/**'
+      - 'agent_engine/**'
       - 'tests/**'
       - 'scripts/**'
       - 'pyproject.toml'
@@ -101,13 +101,13 @@ jobs:
         run: |
           source .venv/bin/activate
           echo "=== Running ruff check ==="
-          ruff check src/ scripts/
+          ruff check agent_engine/ scripts/
 
       - name: Run ruff format check
         run: |
           source .venv/bin/activate
           echo "=== Running ruff format check ==="
-          ruff format --check src/ scripts/
+          ruff format --check agent_engine/ scripts/
 
   typecheck:
     name: Type Check (mypy)
@@ -139,7 +139,7 @@ jobs:
         run: |
           source .venv/bin/activate
           echo "=== Running mypy ==="
-          mypy src/ --ignore-missing-imports
+          mypy agent_engine/ --ignore-missing-imports
 
   security:
     name: Security Scan (bandit)
@@ -171,7 +171,7 @@ jobs:
         run: |
           source .venv/bin/activate
           echo "=== Running bandit security scan ==="
-          bandit -r src/ -ll -ii
+          bandit -r agent_engine/ -ll -ii
 
   test:
     name: Test (pytest)
@@ -204,7 +204,7 @@ jobs:
           source .venv/bin/activate
           echo "=== Running pytest with coverage ==="
           pytest tests/ \
-            --cov=src/agent_engine \
+            --cov=agent_engine \
             --cov-report=xml:coverage.xml \
             --cov-report=html:coverage_html \
             --cov-report=term-missing \

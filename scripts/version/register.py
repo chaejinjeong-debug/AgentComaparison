@@ -12,7 +12,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 from agent_engine.version import VersionRegistry
 from agent_engine.version.models import Environment
 

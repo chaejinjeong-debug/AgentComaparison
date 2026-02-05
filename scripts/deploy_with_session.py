@@ -16,7 +16,6 @@ import argparse
 import sys
 from pathlib import Path
 
-
 import structlog
 
 structlog.configure(
@@ -336,7 +335,6 @@ def deploy_agent(
 
 def main():
     import os
-    from pathlib import Path
 
     from dotenv import load_dotenv
 

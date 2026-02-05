@@ -20,7 +20,6 @@ import argparse
 import sys
 from pathlib import Path
 
-
 import structlog
 
 structlog.configure(
@@ -106,6 +105,7 @@ def deploy_from_source(
 
     # Change to project root directory for relative path resolution
     import os
+
     project_root = Path(__file__).parent.parent
     os.chdir(project_root)
     logger.info("working_directory_changed", cwd=str(project_root))
@@ -183,6 +183,7 @@ def update_agent_from_source(
 
     # Change to project root directory for relative path resolution
     import os
+
     project_root = Path(__file__).parent.parent
     os.chdir(project_root)
 
