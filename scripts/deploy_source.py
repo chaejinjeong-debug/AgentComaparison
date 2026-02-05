@@ -45,10 +45,9 @@ logger = structlog.get_logger()
 
 
 # Source package configuration
-# Upload agent_engine directly so it's at /code/agent_engine/
-SOURCE_PACKAGES = [
-    "agent_engine",  # Symlink at project root -> src/agent_engine
-]
+# Copy src/agent_engine to a temp location to ensure proper upload
+SOURCE_PACKAGE_SRC = "src/agent_engine"  # Original source
+SOURCE_PACKAGE_NAME = "agent_engine"  # Target package name
 
 # Entrypoint configuration
 ENTRYPOINT_MODULE = "agent_engine.agent"
@@ -100,6 +99,9 @@ def deploy_from_source(
     Returns:
         Deployed agent resource name
     """
+    import shutil
+    import tempfile
+
     import vertexai
 
     logger.info(
@@ -115,14 +117,24 @@ def deploy_from_source(
 
     # Get absolute paths for source packages
     project_root = Path(__file__).parent.parent
-    source_packages = [str(project_root / pkg) for pkg in SOURCE_PACKAGES]
+    src_path = project_root / SOURCE_PACKAGE_SRC
 
-    # Verify source packages exist
-    for pkg in source_packages:
-        if not Path(pkg).exists():
-            raise FileNotFoundError(f"Source package not found: {pkg}")
+    # Verify source package exists
+    if not src_path.exists():
+        raise FileNotFoundError(f"Source package not found: {src_path}")
 
-    logger.info("source_packages_verified", packages=source_packages)
+    # Create a temporary directory and copy the source package
+    # This ensures symlinks are followed and the directory structure is correct
+    temp_dir = Path(tempfile.mkdtemp(prefix="agent_deploy_"))
+    temp_pkg_path = temp_dir / SOURCE_PACKAGE_NAME
+
+    try:
+        # Copy the source package to temp location (follows symlinks)
+        shutil.copytree(src_path, temp_pkg_path)
+        logger.info("source_package_copied", src=str(src_path), dest=str(temp_pkg_path))
+
+        source_packages = [str(temp_pkg_path)]
+        logger.info("source_packages_verified", packages=source_packages)
 
     # Create temporary requirements file for deployment
     # Include all core dependencies from pyproject.toml
@@ -144,31 +156,37 @@ pyyaml>=6.0.3
     requirements_file.write_text(requirements_content)
     logger.info("requirements_file_created", path=str(requirements_file))
 
-    # Deploy from source using client.agent_engines.create()
-    deployed_agent = client.agent_engines.create(
-        config={
-            "source_packages": source_packages,
-            "entrypoint_module": ENTRYPOINT_MODULE,
-            "entrypoint_object": ENTRYPOINT_OBJECT,
-            "class_methods": CLASS_METHODS,
-            "display_name": display_name,
-            "description": description,
-            "requirements_file": str(requirements_file),
-            "env_vars": {
-                "AGENT_LOCATION": location,
-            },
-        }
-    )
+        # Deploy from source using client.agent_engines.create()
+        deployed_agent = client.agent_engines.create(
+            config={
+                "source_packages": source_packages,
+                "entrypoint_module": ENTRYPOINT_MODULE,
+                "entrypoint_object": ENTRYPOINT_OBJECT,
+                "class_methods": CLASS_METHODS,
+                "display_name": display_name,
+                "description": description,
+                "requirements_file": str(requirements_file),
+                "env_vars": {
+                    "AGENT_LOCATION": location,
+                },
+            }
+        )
 
-    agent_name = deployed_agent.resource_name
+        agent_name = deployed_agent.resource_name
 
-    logger.info(
-        "source_deployment_complete",
-        agent_name=agent_name,
-        display_name=display_name,
-    )
+        logger.info(
+            "source_deployment_complete",
+            agent_name=agent_name,
+            display_name=display_name,
+        )
 
-    return agent_name
+        return agent_name
+
+    finally:
+        # Clean up temporary directory
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+            logger.info("temp_directory_cleaned", path=str(temp_dir))
 
 
 def update_agent_from_source(
@@ -188,6 +206,9 @@ def update_agent_from_source(
     Returns:
         Updated agent resource name
     """
+    import shutil
+    import tempfile
+
     import vertexai
 
     logger.info(
@@ -202,26 +223,47 @@ def update_agent_from_source(
 
     # Get absolute paths for source packages
     project_root = Path(__file__).parent.parent
-    source_packages = [str(project_root / pkg) for pkg in SOURCE_PACKAGES]
+    src_path = project_root / SOURCE_PACKAGE_SRC
 
-    # Get existing agent
-    agent = client.agent_engines.get(agent_name)
+    # Verify source package exists
+    if not src_path.exists():
+        raise FileNotFoundError(f"Source package not found: {src_path}")
 
-    # Update from source
-    agent.update(
-        config={
-            "source_packages": source_packages,
-            "entrypoint_module": ENTRYPOINT_MODULE,
-            "entrypoint_object": ENTRYPOINT_OBJECT,
-        }
-    )
+    # Create a temporary directory and copy the source package
+    temp_dir = Path(tempfile.mkdtemp(prefix="agent_update_"))
+    temp_pkg_path = temp_dir / SOURCE_PACKAGE_NAME
 
-    logger.info(
-        "source_update_complete",
-        agent_name=agent.resource_name,
-    )
+    try:
+        # Copy the source package to temp location
+        shutil.copytree(src_path, temp_pkg_path)
+        logger.info("source_package_copied", src=str(src_path), dest=str(temp_pkg_path))
 
-    return agent.resource_name
+        source_packages = [str(temp_pkg_path)]
+
+        # Get existing agent
+        agent = client.agent_engines.get(agent_name)
+
+        # Update from source
+        agent.update(
+            config={
+                "source_packages": source_packages,
+                "entrypoint_module": ENTRYPOINT_MODULE,
+                "entrypoint_object": ENTRYPOINT_OBJECT,
+            }
+        )
+
+        logger.info(
+            "source_update_complete",
+            agent_name=agent.resource_name,
+        )
+
+        return agent.resource_name
+
+    finally:
+        # Clean up temporary directory
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+            logger.info("temp_directory_cleaned", path=str(temp_dir))
 
 
 def verify_deployment(agent_name: str, project: str, location: str) -> dict:
