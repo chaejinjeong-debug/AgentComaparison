@@ -8,7 +8,8 @@ VertexAI Agent Engine에 배포 가능한 Pydantic AI 기반 Production-ready Ag
 - **Agent Engine 규격 준수**: `__init__`, `set_up`, `query` 메서드 구현
 - **Pydantic AI 통합**: Pydantic AI Agent를 Agent Engine에서 실행
 - **Gemini 모델 연동**: GoogleProvider를 통한 VertexAI Gemini 모델 사용
-- **동기/비동기 지원**: `query` (sync), `aquery` (async) 메서드 제공
+- **비동기 기반**: `query` (async), `aquery` (async alias) 메서드 제공
+- **자동 초기화**: `set_up()` 명시적 호출 없이 자동 초기화 지원
 - **기본 Tool 라이브러리**: 검색, 계산, 날짜/시간 Tool 포함
 - **Docker 지원**: 로컬 개발/테스트 환경 제공
 
@@ -60,29 +61,30 @@ cp .env.example .env
 ### 2. 기본 사용법
 
 ```python
-from agent_engine import PydanticAIAgentWrapper, AgentConfig
+import asyncio
+from agent_engine import PydanticAIAgentWrapper
 from agent_engine.tools import DEFAULT_TOOLS
 
-# Agent 생성
+# Agent 생성 (환경변수로 설정 가능)
 agent = PydanticAIAgentWrapper(
-    model="gemini-2.5-pro",
-    project="your-project-id",
-    location="asia-northeast3",
+    model="gemini-2.5-flash",  # 또는 AGENT_MODEL 환경변수
+    project="your-project-id",  # 또는 GOOGLE_CLOUD_PROJECT 환경변수
+    location="asia-northeast3",  # 또는 AGENT_LOCATION 환경변수
     system_prompt="You are a helpful assistant.",
     tools=DEFAULT_TOOLS,
 )
 
-# 초기화
-agent.set_up()
+# 비동기 쿼리 (자동 초기화됨)
+async def main():
+    response = await agent.query(
+        message="What time is it in Seoul?",
+        user_id="user123",
+    )
+    print(response["response"])
 
-# 동기 쿼리
-response = agent.query(
-    message="What time is it in Seoul?",
-    user_id="user123",
-)
-print(response["response"])
+asyncio.run(main())
 
-# 비동기 쿼리
+# 또는 aquery 사용 (query의 alias)
 response = await agent.aquery(
     message="Calculate 15 * 23",
     user_id="user123",
@@ -110,7 +112,7 @@ from agent_engine import AgentConfig, SessionConfig, MemoryConfig
 
 # Config로 Agent 생성
 config = AgentConfig(
-    model="gemini-2.5-pro",
+    model="gemini-2.5-flash",
     project_id="your-project-id",
     location="asia-northeast3",
     session=SessionConfig(enabled=True, ttl_hours=24),
@@ -118,7 +120,7 @@ config = AgentConfig(
 )
 
 agent = PydanticAIAgentWrapper.from_config(config, tools=DEFAULT_TOOLS)
-agent.set_up()
+# set_up()은 자동으로 호출됨
 
 # 세션 기반 쿼리 (대화 기록 자동 관리)
 response = await agent.query_with_session(
@@ -154,20 +156,28 @@ uv run pytest tests/ -v
 uv run pytest tests/ -v --cov=agent_engine --cov-report=html
 
 # 린팅
-uv run ruff check src/ tests/
+uv run ruff check agent_engine/ scripts/
 
 # 타입 체크
-uv run mypy src/
+uv run mypy agent_engine/
 ```
 
 ### 6. Agent Engine 배포
 
 ```bash
-# Staging 배포
-uv run python scripts/deploy_source.py --env staging
+# 소스 배포 (권장)
+uv run python scripts/deploy_source.py deploy \
+    --project your-project-id \
+    --location asia-northeast3 \
+    --display-name "pydantic-ai-agent" \
+    --model "gemini-2.5-flash" \
+    --verify
 
-# Production 배포
-uv run python scripts/deploy_source.py --env production
+# 배포된 Agent 검증
+uv run python scripts/deploy_source.py verify \
+    --project your-project-id \
+    --location asia-northeast3 \
+    --agent-name "projects/.../reasoningEngines/xxx"
 
 # 버전 등록
 uv run python scripts/version/register.py \
@@ -178,55 +188,51 @@ uv run python scripts/version/register.py \
 ## Project Structure
 
 ```
-AgentEngine/
+AgentComaparison/
 ├── pyproject.toml              # 패키지 설정
-├── cloudbuild.yaml             # CI/CD 파이프라인
-├── src/
-│   └── agent_engine/
-│       ├── __init__.py
-│       ├── agent.py            # Agent Wrapper (핵심)
-│       ├── config.py           # 설정 관리
-│       ├── exceptions.py       # 예외 정의
-│       ├── tools/              # 기본 Tools
-│       │   ├── search.py       # 검색 (Mock)
-│       │   ├── calculator.py   # 계산
-│       │   ├── datetime_tool.py # 날짜/시간
-│       │   └── memory_tools.py # 메모리 저장/조회
-│       ├── sessions/           # Session 관리
-│       │   ├── manager.py
-│       │   ├── models.py
-│       │   └── backends/       # InMemory, VertexAI
-│       ├── memory/             # Memory Bank
-│       │   ├── manager.py
-│       │   ├── retriever.py
-│       │   └── backends/       # InMemory, VertexAI
-│       ├── observability/      # Tracing, Logging, Metrics
-│       ├── evaluation/         # Agent 평가
-│       └── version/            # 버전 관리
+├── .github/workflows/          # GitHub Actions CI/CD
+│   ├── ci.yml                  # CI 파이프라인
+│   ├── deploy-staging.yml      # Staging 배포
+│   └── deploy-production.yml   # Production 배포
+├── agent_engine/               # 메인 패키지 (Agent Engine 배포용)
+│   ├── __init__.py
+│   ├── agent.py                # Agent Wrapper (핵심)
+│   ├── config.py               # 설정 관리
+│   ├── exceptions.py           # 예외 정의
+│   ├── requirements.txt        # Agent Engine 의존성
+│   ├── setup.py                # Agent Engine 패키지 설정
+│   ├── core/                   # 핵심 컴포넌트
+│   │   ├── pydantic_agent.py   # Pydantic AI Agent
+│   │   ├── message_builder.py  # 메시지 빌더
+│   │   └── result_processor.py # 결과 처리
+│   ├── tools/                  # 기본 Tools
+│   │   ├── search.py           # 검색 (Mock)
+│   │   ├── calculator.py       # 계산
+│   │   ├── datetime_tool.py    # 날짜/시간
+│   │   └── memory_tools.py     # 메모리 저장/조회
+│   ├── sessions/               # Session 관리
+│   │   ├── manager.py
+│   │   ├── models.py
+│   │   └── backends/           # InMemory, VertexAI
+│   ├── memory/                 # Memory Bank
+│   │   ├── manager.py
+│   │   ├── retriever.py
+│   │   └── backends/           # InMemory, VertexAI
+│   ├── observability/          # Tracing, Logging, Metrics
+│   ├── evaluation/             # Agent 평가
+│   └── version/                # 버전 관리
 ├── scripts/
 │   ├── deploy.py               # SDK 배포
-│   ├── deploy_source.py        # 소스 배포
+│   ├── deploy_source.py        # 소스 배포 (주요)
 │   └── version/                # 버전 관리 스크립트
-├── monitoring/
-│   ├── dashboard.yaml          # 모니터링 대시보드
-│   └── alerts.yaml             # 알림 설정
 ├── docs/
 │   ├── API_REFERENCE.md        # API 문서
 │   ├── DEPLOYMENT.md           # 배포 가이드
-│   ├── SECURITY.md             # 보안 가이드
-│   ├── RUNBOOK.md              # 운영 런북
-│   ├── TRAINING.md             # 교육 자료
-│   └── OPERATIONS.md           # 운영 가이드
-├── docker/
-│   ├── Dockerfile
-│   └── docker-compose.yml
+│   └── ...
 └── tests/
     ├── test_agent.py
     ├── test_tools.py
-    ├── test_sessions.py
-    ├── test_memory.py
-    ├── test_observability.py
-    └── evaluation/
+    └── ...
 ```
 
 ## Configuration
@@ -235,9 +241,10 @@ AgentEngine/
 
 | 변수 | 설명 | 기본값 |
 |------|------|--------|
-| `AGENT_PROJECT_ID` | GCP 프로젝트 ID | - |
+| `GOOGLE_CLOUD_PROJECT` | GCP 프로젝트 ID (Agent Engine 자동 설정) | - |
+| `AGENT_PROJECT_ID` | GCP 프로젝트 ID (로컬용) | - |
 | `AGENT_LOCATION` | GCP 리전 | `asia-northeast3` |
-| `AGENT_MODEL` | Gemini 모델 | `gemini-2.5-pro` |
+| `AGENT_MODEL` | Gemini 모델 | `gemini-2.5-flash` |
 | `AGENT_TEMPERATURE` | 모델 온도 | `0.7` |
 | `AGENT_MAX_TOKENS` | 최대 토큰 | `4096` |
 | `AGENT_SYSTEM_PROMPT` | 시스템 프롬프트 | `You are a helpful AI assistant.` |
@@ -245,6 +252,8 @@ AgentEngine/
 | `SESSION_TTL_HOURS` | 세션 TTL | `24` |
 | `MEMORY_ENABLED` | 메모리 활성화 | `false` |
 | `MEMORY_AUTO_GENERATE` | 메모리 자동 생성 | `false` |
+
+> **Note**: Agent Engine 배포 시 `GOOGLE_CLOUD_PROJECT`는 자동으로 설정됩니다.
 
 ### AgentConfig
 
@@ -259,7 +268,7 @@ from agent_engine import (
 )
 
 config = AgentConfig(
-    model="gemini-2.5-pro",
+    model="gemini-2.5-flash",  # asia-northeast3에서 사용 가능
     project_id="your-project-id",
     location="asia-northeast3",
     system_prompt="You are a helpful assistant.",
@@ -321,8 +330,8 @@ docker-compose -f docker/docker-compose.yml --profile lint up lint
 
 | 메서드 | 설명 |
 |--------|------|
-| `query()` | 동기 쿼리 |
-| `aquery()` | 비동기 쿼리 |
+| `query()` | 비동기 쿼리 (async) |
+| `aquery()` | 비동기 쿼리 (query의 alias) |
 | `stream_query()` | 비동기 스트리밍 쿼리 |
 | `stream_query_sync()` | 동기 스트리밍 쿼리 |
 | `query_with_session()` | 세션 기반 비동기 쿼리 |
