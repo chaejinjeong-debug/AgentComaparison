@@ -484,7 +484,7 @@ jobs:
         run: |
           source .venv/bin/activate
           if [ -f evaluation_results.json ]; then
-            SCORE=$(python -c "import json; print(json.load(open('evaluation_results.json'))['overall_score'])")
+            SCORE=$(python -c "import json; print(json.load(open('evaluation_results.json'))['summary']['quality']['accuracy'])")
             echo "Evaluation Score: $SCORE"
             if (( $(echo "$SCORE < ${{ env.EVALUATION_THRESHOLD }}" | bc -l) )); then
               echo "::error::Evaluation score ($SCORE) is below threshold (${{ env.EVALUATION_THRESHOLD }})"
