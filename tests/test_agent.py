@@ -19,7 +19,8 @@ class TestPydanticAIAgentWrapper:
         """Test initialization with default values."""
         agent = PydanticAIAgentWrapper()
 
-        assert agent.model_name == "gemini-2.5-pro"
+        # Note: default model is gemini-2.5-flash (from AGENT_MODEL env var or hardcoded default)
+        assert agent.model_name == "gemini-2.5-flash"
         assert agent.project == ""
         assert agent.location == "asia-northeast3"
         assert agent.system_prompt == "You are a helpful AI assistant."
@@ -65,12 +66,13 @@ class TestPydanticAIAgentWrapper:
 
         assert len(agent.tools) == 2
 
-    def test_query_without_setup_raises_error(self) -> None:
+    @pytest.mark.asyncio
+    async def test_query_without_setup_raises_error(self) -> None:
         """Test that query without setup raises AgentConfigError."""
         agent = PydanticAIAgentWrapper(project="test")
 
         with pytest.raises(AgentConfigError) as exc_info:
-            agent.query(message="Hello")
+            await agent.query(message="Hello")
 
         assert "not set up" in str(exc_info.value).lower()
 
@@ -189,11 +191,12 @@ class TestAgentSetup:
 class TestAgentQuery:
     """Test suite for agent query functionality."""
 
+    @pytest.mark.asyncio
     @patch("vertexai.init")
     @patch("pydantic_ai.providers.google.GoogleProvider")
     @patch("pydantic_ai.models.google.GoogleModel")
     @patch("pydantic_ai.Agent")
-    def test_query_success(
+    async def test_query_success(
         self,
         mock_agent_class: MagicMock,
         mock_model: MagicMock,
@@ -203,25 +206,26 @@ class TestAgentQuery:
     ) -> None:
         """Test successful query."""
         mock_pydantic_agent = MagicMock()
-        mock_pydantic_agent.run_sync.return_value = mock_agent_result
+        mock_pydantic_agent.run = AsyncMock(return_value=mock_agent_result)
         mock_agent_class.return_value = mock_pydantic_agent
 
         agent = PydanticAIAgentWrapper(project="test")
         agent.set_up()
 
-        result = agent.query(message="Hello")
+        result = await agent.query(message="Hello")
 
         assert "response" in result
         assert "tool_calls" in result
         assert "usage" in result
         assert "metadata" in result
-        mock_pydantic_agent.run_sync.assert_called_once()
+        mock_pydantic_agent.run.assert_called_once()
 
+    @pytest.mark.asyncio
     @patch("vertexai.init")
     @patch("pydantic_ai.providers.google.GoogleProvider")
     @patch("pydantic_ai.models.google.GoogleModel")
     @patch("pydantic_ai.Agent")
-    def test_query_with_user_id(
+    async def test_query_with_user_id(
         self,
         mock_agent_class: MagicMock,
         mock_model: MagicMock,
@@ -231,21 +235,22 @@ class TestAgentQuery:
     ) -> None:
         """Test query with user_id."""
         mock_pydantic_agent = MagicMock()
-        mock_pydantic_agent.run_sync.return_value = mock_agent_result
+        mock_pydantic_agent.run = AsyncMock(return_value=mock_agent_result)
         mock_agent_class.return_value = mock_pydantic_agent
 
         agent = PydanticAIAgentWrapper(project="test")
         agent.set_up()
 
-        result = agent.query(message="Hello", user_id="user123")
+        result = await agent.query(message="Hello", user_id="user123")
 
         assert result["metadata"]["user_id"] == "user123"
 
+    @pytest.mark.asyncio
     @patch("vertexai.init")
     @patch("pydantic_ai.providers.google.GoogleProvider")
     @patch("pydantic_ai.models.google.GoogleModel")
     @patch("pydantic_ai.Agent")
-    def test_query_failure_raises_error(
+    async def test_query_failure_raises_error(
         self,
         mock_agent_class: MagicMock,
         mock_model: MagicMock,
@@ -254,14 +259,14 @@ class TestAgentQuery:
     ) -> None:
         """Test query failure raises AgentQueryError."""
         mock_pydantic_agent = MagicMock()
-        mock_pydantic_agent.run_sync.side_effect = RuntimeError("API error")
+        mock_pydantic_agent.run = AsyncMock(side_effect=RuntimeError("API error"))
         mock_agent_class.return_value = mock_pydantic_agent
 
         agent = PydanticAIAgentWrapper(project="test")
         agent.set_up()
 
         with pytest.raises(AgentQueryError) as exc_info:
-            agent.query(message="Hello")
+            await agent.query(message="Hello")
 
         assert "API error" in str(exc_info.value)
 
