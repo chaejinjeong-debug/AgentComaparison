@@ -334,16 +334,16 @@ def deploy_agent(
 
 
 def main():
-    import os
-
     from dotenv import load_dotenv
+
+    from agent_engine.envs import Env
 
     # Load .env from project root
     load_dotenv(Path(__file__).parent.parent / ".env")
 
     parser = argparse.ArgumentParser(description="Deploy session-aware agent")
-    parser.add_argument("--project", default=os.getenv("AGENT_PROJECT_ID", ""))
-    parser.add_argument("--location", default=os.getenv("AGENT_LOCATION", "asia-northeast3"))
+    parser.add_argument("--project", default=Env.AGENT_PROJECT_ID)
+    parser.add_argument("--location", default=Env.AGENT_LOCATION)
     parser.add_argument("--display-name", default="session-aware-agent")
     parser.add_argument("--staging-bucket", default=None)
 

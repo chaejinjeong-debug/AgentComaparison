@@ -99,17 +99,14 @@ class PydanticAIAgentWrapper:
             max_tokens: Maximum output tokens
             config: Optional full AgentConfig for Phase 2 features
         """
-        import os
+        from agent_engine.constants import DEFAULT_LOCATION, DEFAULT_MODEL
+        from agent_engine.envs import Env
 
         # Fall back to environment variables for model, project, and location
         # GOOGLE_CLOUD_PROJECT is set automatically by Agent Engine
-        self.model_name = model or os.environ.get("AGENT_MODEL", "gemini-2.5-flash")
-        self.project = (
-            project
-            or os.environ.get("GOOGLE_CLOUD_PROJECT", "")
-            or os.environ.get("AGENT_PROJECT_ID", "")
-        )
-        self.location = location or os.environ.get("AGENT_LOCATION", "asia-northeast3")
+        self.model_name = model or Env.AGENT_MODEL or DEFAULT_MODEL
+        self.project = project or Env.get_project_id()
+        self.location = location or Env.AGENT_LOCATION or DEFAULT_LOCATION
         self.system_prompt = system_prompt
         self.tools = list(tools) if tools else []
         self.temperature = temperature

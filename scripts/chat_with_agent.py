@@ -5,20 +5,21 @@ Usage:
     cd AgentEngine && uv run python scripts/chat_with_agent.py
 """
 
-import os
 from pathlib import Path
 
 import vertexai
 from dotenv import load_dotenv
 from vertexai.preview import reasoning_engines
 
+from agent_engine.envs import Env
+
 # Load .env from project root
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Configuration
-PROJECT_ID = os.getenv("AGENT_PROJECT_ID", "")
-LOCATION = os.getenv("AGENT_LOCATION", "asia-northeast3")
-AGENT_ENGINE_ID = os.getenv("AGENT_ENGINE_ID", "")
+PROJECT_ID = Env.AGENT_PROJECT_ID
+LOCATION = Env.AGENT_LOCATION
+AGENT_ENGINE_ID = Env.AGENT_ENGINE_ID
 
 
 def main():

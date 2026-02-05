@@ -8,13 +8,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 from agent_engine.config import (
     AgentConfig,
     MemoryConfig,
     ObservabilityConfig,
     SessionConfig,
 )
+from agent_engine.envs import Env
 from agent_engine.tools import calculate, convert_timezone, get_current_datetime, search
 
 
@@ -169,9 +169,16 @@ def env_vars() -> dict[str, str]:
 
 @pytest.fixture
 def mock_env(env_vars: dict[str, str]) -> Any:
-    """Mock environment variables."""
+    """Mock environment variables using Env.override().
+
+    This fixture uses the Env.override() mechanism for cleaner testing.
+    It also patches os.environ for compatibility with any code that
+    directly reads environment variables.
+    """
+    Env.override(**env_vars)
     with patch.dict(os.environ, env_vars, clear=False):
         yield
+    Env.clear_overrides()
 
 
 class MockAgentResult:

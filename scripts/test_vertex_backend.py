@@ -5,7 +5,6 @@ This script tests the VertexAI backend integration for Sessions and Memory Bank.
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -21,14 +20,15 @@ from agent_engine.config import (
     SessionBackendType,
     SessionConfig,
 )
+from agent_engine.envs import Env
 from agent_engine.memory import MemoryManager
 from agent_engine.sessions import SessionManager
 from agent_engine.sessions.models import EventAuthor
 
 # Configuration
-PROJECT_ID = os.getenv("AGENT_PROJECT_ID", "")
-LOCATION = os.getenv("AGENT_LOCATION", "asia-northeast3")
-AGENT_ENGINE_ID = os.getenv("AGENT_ENGINE_ID", "")
+PROJECT_ID = Env.AGENT_PROJECT_ID
+LOCATION = Env.AGENT_LOCATION
+AGENT_ENGINE_ID = Env.AGENT_ENGINE_ID
 
 
 async def test_inmemory_backend():

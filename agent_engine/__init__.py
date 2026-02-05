@@ -10,6 +10,18 @@ from agent_engine.config import (
     SessionBackendType,
     SessionConfig,
 )
+from agent_engine.constants import (
+    DEFAULT_DESCRIPTION,
+    DEFAULT_DISPLAY_NAME,
+    DEFAULT_LOCATION,
+    DEFAULT_LOG_FORMAT,
+    DEFAULT_LOG_LEVEL,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_MODEL,
+    DEFAULT_SYSTEM_PROMPT,
+    DEFAULT_TEMPERATURE,
+)
+from agent_engine.envs import Env
 
 # Core module (refactored components)
 from agent_engine.core import (
@@ -57,6 +69,18 @@ __all__ = [
     "MemoryBackendType",
     "ObservabilityConfig",
     "EvaluationConfig",
+    # Environment Variables
+    "Env",
+    # Constants (commonly used)
+    "DEFAULT_MODEL",
+    "DEFAULT_LOCATION",
+    "DEFAULT_TEMPERATURE",
+    "DEFAULT_MAX_TOKENS",
+    "DEFAULT_SYSTEM_PROMPT",
+    "DEFAULT_DISPLAY_NAME",
+    "DEFAULT_DESCRIPTION",
+    "DEFAULT_LOG_LEVEL",
+    "DEFAULT_LOG_FORMAT",
     # Exceptions
     "AgentError",
     "AgentConfigError",

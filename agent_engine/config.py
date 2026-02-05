@@ -1,12 +1,37 @@
 """Configuration management for the Agent Engine platform."""
 
-import os
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
+
+from agent_engine.constants import (
+    DEFAULT_DESCRIPTION,
+    DEFAULT_DISPLAY_NAME,
+    DEFAULT_ERROR_RATE_THRESHOLD,
+    DEFAULT_EVALUATION_TIMEOUT_SECONDS,
+    DEFAULT_LOCATION,
+    DEFAULT_LOG_FORMAT,
+    DEFAULT_LOG_LEVEL,
+    DEFAULT_MAX_EVENTS_PER_SESSION,
+    DEFAULT_MAX_MEMORIES_PER_USER,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_MODEL,
+    DEFAULT_P50_THRESHOLD_MS,
+    DEFAULT_P99_THRESHOLD_MS,
+    DEFAULT_QUALITY_THRESHOLD,
+    DEFAULT_SESSION_TTL_SECONDS,
+    DEFAULT_SIMILARITY_THRESHOLD,
+    DEFAULT_SYSTEM_PROMPT,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TEST_DATA_PATH,
+    DEFAULT_TRACE_SAMPLE_RATE,
+    VALID_LOG_FORMATS,
+    VALID_LOG_LEVELS,
+)
+from agent_engine.envs import Env
 
 
 class SessionBackendType(str, Enum):
@@ -36,9 +61,11 @@ class SessionConfig(BaseModel):
 
     enabled: bool = Field(default=True, description="Enable session management")
     default_ttl_seconds: int = Field(
-        default=86400, ge=60, description="Default session TTL (24 hours)"
+        default=DEFAULT_SESSION_TTL_SECONDS, ge=60, description="Default session TTL (24 hours)"
     )
-    max_events_per_session: int = Field(default=1000, ge=10, description="Max events per session")
+    max_events_per_session: int = Field(
+        default=DEFAULT_MAX_EVENTS_PER_SESSION, ge=10, description="Max events per session"
+    )
     backend: SessionBackendType = Field(
         default=SessionBackendType.IN_MEMORY,
         description="Storage backend (in_memory for local, vertex_ai for production)",
@@ -63,9 +90,14 @@ class MemoryConfig(BaseModel):
 
     enabled: bool = Field(default=True, description="Enable memory bank")
     auto_generate: bool = Field(default=True, description="Auto-generate memories from sessions")
-    max_memories_per_user: int = Field(default=1000, ge=10, description="Max memories per user")
+    max_memories_per_user: int = Field(
+        default=DEFAULT_MAX_MEMORIES_PER_USER, ge=10, description="Max memories per user"
+    )
     similarity_threshold: float = Field(
-        default=0.7, ge=0.0, le=1.0, description="Similarity threshold for retrieval"
+        default=DEFAULT_SIMILARITY_THRESHOLD,
+        ge=0.0,
+        le=1.0,
+        description="Similarity threshold for retrieval",
     )
     backend: MemoryBackendType = Field(
         default=MemoryBackendType.IN_MEMORY,
@@ -90,7 +122,9 @@ class ObservabilityConfig(BaseModel):
     tracing_enabled: bool = Field(default=True, description="Enable Cloud Trace")
     logging_enabled: bool = Field(default=True, description="Enable structured logging")
     metrics_enabled: bool = Field(default=True, description="Enable metrics collection")
-    sample_rate: float = Field(default=1.0, ge=0.0, le=1.0, description="Trace sampling rate")
+    sample_rate: float = Field(
+        default=DEFAULT_TRACE_SAMPLE_RATE, ge=0.0, le=1.0, description="Trace sampling rate"
+    )
 
 
 class EvaluationConfig(BaseModel):
@@ -108,18 +142,24 @@ class EvaluationConfig(BaseModel):
 
     enabled: bool = Field(default=True, description="Enable evaluation")
     quality_threshold: float = Field(
-        default=0.85, ge=0.0, le=1.0, description="Minimum accuracy threshold"
+        default=DEFAULT_QUALITY_THRESHOLD, ge=0.0, le=1.0, description="Minimum accuracy threshold"
     )
-    p50_threshold_ms: float = Field(default=2000.0, gt=0, description="Maximum P50 latency (ms)")
-    p99_threshold_ms: float = Field(default=10000.0, gt=0, description="Maximum P99 latency (ms)")
+    p50_threshold_ms: float = Field(
+        default=DEFAULT_P50_THRESHOLD_MS, gt=0, description="Maximum P50 latency (ms)"
+    )
+    p99_threshold_ms: float = Field(
+        default=DEFAULT_P99_THRESHOLD_MS, gt=0, description="Maximum P99 latency (ms)"
+    )
     error_rate_threshold: float = Field(
-        default=0.05, ge=0.0, le=1.0, description="Maximum error rate"
+        default=DEFAULT_ERROR_RATE_THRESHOLD, ge=0.0, le=1.0, description="Maximum error rate"
     )
     test_data_path: str = Field(
-        default="tests/evaluation/golden/qa_pairs.json",
+        default=DEFAULT_TEST_DATA_PATH,
         description="Path to test data file",
     )
-    timeout_seconds: float = Field(default=30.0, gt=0, description="Default timeout per test")
+    timeout_seconds: float = Field(
+        default=DEFAULT_EVALUATION_TIMEOUT_SECONDS, gt=0, description="Default timeout per test"
+    )
 
 
 class AgentConfig(BaseModel):
@@ -142,21 +182,21 @@ class AgentConfig(BaseModel):
     """
 
     project_id: str = Field(..., description="GCP project ID")
-    location: str = Field(default="asia-northeast3", description="GCP region")
-    model: str = Field(default="gemini-2.5-pro", description="Gemini model name")
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    max_tokens: int = Field(default=4096, gt=0)
+    location: str = Field(default=DEFAULT_LOCATION, description="GCP region")
+    model: str = Field(default=DEFAULT_MODEL, description="Gemini model name")
+    temperature: float = Field(default=DEFAULT_TEMPERATURE, ge=0.0, le=2.0)
+    max_tokens: int = Field(default=DEFAULT_MAX_TOKENS, gt=0)
     system_prompt: str = Field(
-        default="You are a helpful AI assistant.",
+        default=DEFAULT_SYSTEM_PROMPT,
         description="System prompt for the agent",
     )
-    display_name: str = Field(default="pydantic-ai-agent", description="Agent display name")
+    display_name: str = Field(default=DEFAULT_DISPLAY_NAME, description="Agent display name")
     description: str = Field(
-        default="Pydantic AI Agent on VertexAI Agent Engine",
+        default=DEFAULT_DESCRIPTION,
         description="Agent description",
     )
-    log_level: str = Field(default="INFO")
-    log_format: str = Field(default="json")
+    log_level: str = Field(default=DEFAULT_LOG_LEVEL)
+    log_format: str = Field(default=DEFAULT_LOG_FORMAT)
 
     # Phase 2 configurations
     session: SessionConfig = Field(default_factory=SessionConfig)
@@ -169,19 +209,17 @@ class AgentConfig(BaseModel):
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
-        valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         v_upper = v.upper()
-        if v_upper not in valid_levels:
-            raise ValueError(f"log_level must be one of {valid_levels}")
+        if v_upper not in VALID_LOG_LEVELS:
+            raise ValueError(f"log_level must be one of {VALID_LOG_LEVELS}")
         return v_upper
 
     @field_validator("log_format")
     @classmethod
     def validate_log_format(cls, v: str) -> str:
-        valid_formats = {"json", "text"}
         v_lower = v.lower()
-        if v_lower not in valid_formats:
-            raise ValueError(f"log_format must be one of {valid_formats}")
+        if v_lower not in VALID_LOG_FORMATS:
+            raise ValueError(f"log_format must be one of {VALID_LOG_FORMATS}")
         return v_lower
 
     @classmethod
@@ -199,77 +237,70 @@ class AgentConfig(BaseModel):
         else:
             load_dotenv()
 
-        system_prompt = os.getenv("AGENT_SYSTEM_PROMPT", "You are a helpful AI assistant.")
-        system_prompt_file = os.getenv("AGENT_SYSTEM_PROMPT_FILE")
-
-        if system_prompt_file and Path(system_prompt_file).exists():
-            system_prompt = Path(system_prompt_file).read_text(encoding="utf-8").strip()
+        # Get system prompt (supports file loading)
+        system_prompt = Env.get_system_prompt()
 
         # Session configuration
-        session_backend_str = os.getenv("SESSION_BACKEND", "in_memory").lower()
+        session_backend_str = Env.SESSION_BACKEND.lower()
         session_backend = (
             SessionBackendType.VERTEX_AI
             if session_backend_str == "vertex_ai"
             else SessionBackendType.IN_MEMORY
         )
         session_config = SessionConfig(
-            enabled=os.getenv("SESSION_ENABLED", "true").lower() == "true",
-            default_ttl_seconds=int(os.getenv("SESSION_TTL_SECONDS", "86400")),
-            max_events_per_session=int(os.getenv("SESSION_MAX_EVENTS", "1000")),
+            enabled=Env.SESSION_ENABLED,
+            default_ttl_seconds=Env.SESSION_TTL_SECONDS,
+            max_events_per_session=Env.SESSION_MAX_EVENTS,
             backend=session_backend,
-            agent_engine_id=os.getenv("SESSION_AGENT_ENGINE_ID"),
+            agent_engine_id=Env.SESSION_AGENT_ENGINE_ID,
         )
 
         # Memory configuration
-        memory_backend_str = os.getenv("MEMORY_BACKEND", "in_memory").lower()
+        memory_backend_str = Env.MEMORY_BACKEND.lower()
         memory_backend = (
             MemoryBackendType.VERTEX_AI
             if memory_backend_str == "vertex_ai"
             else MemoryBackendType.IN_MEMORY
         )
         memory_config = MemoryConfig(
-            enabled=os.getenv("MEMORY_ENABLED", "true").lower() == "true",
-            auto_generate=os.getenv("MEMORY_AUTO_GENERATE", "true").lower() == "true",
-            max_memories_per_user=int(os.getenv("MEMORY_MAX_PER_USER", "1000")),
-            similarity_threshold=float(os.getenv("MEMORY_SIMILARITY_THRESHOLD", "0.7")),
+            enabled=Env.MEMORY_ENABLED,
+            auto_generate=Env.MEMORY_AUTO_GENERATE,
+            max_memories_per_user=Env.MEMORY_MAX_PER_USER,
+            similarity_threshold=Env.MEMORY_SIMILARITY_THRESHOLD,
             backend=memory_backend,
-            agent_engine_id=os.getenv("MEMORY_AGENT_ENGINE_ID"),
+            agent_engine_id=Env.MEMORY_AGENT_ENGINE_ID,
         )
 
         # Observability configuration
         observability_config = ObservabilityConfig(
-            tracing_enabled=os.getenv("TRACING_ENABLED", "true").lower() == "true",
-            logging_enabled=os.getenv("LOGGING_ENABLED", "true").lower() == "true",
-            metrics_enabled=os.getenv("METRICS_ENABLED", "true").lower() == "true",
-            sample_rate=float(os.getenv("TRACE_SAMPLE_RATE", "1.0")),
+            tracing_enabled=Env.TRACING_ENABLED,
+            logging_enabled=Env.LOGGING_ENABLED,
+            metrics_enabled=Env.METRICS_ENABLED,
+            sample_rate=Env.TRACE_SAMPLE_RATE,
         )
 
         # Evaluation configuration (Phase 3)
         evaluation_config = EvaluationConfig(
-            enabled=os.getenv("EVALUATION_ENABLED", "true").lower() == "true",
-            quality_threshold=float(os.getenv("EVALUATION_QUALITY_THRESHOLD", "0.85")),
-            p50_threshold_ms=float(os.getenv("EVALUATION_P50_THRESHOLD_MS", "2000.0")),
-            p99_threshold_ms=float(os.getenv("EVALUATION_P99_THRESHOLD_MS", "10000.0")),
-            error_rate_threshold=float(os.getenv("EVALUATION_ERROR_RATE_THRESHOLD", "0.05")),
-            test_data_path=os.getenv(
-                "EVALUATION_TEST_DATA_PATH", "tests/evaluation/golden/qa_pairs.json"
-            ),
-            timeout_seconds=float(os.getenv("EVALUATION_TIMEOUT_SECONDS", "30.0")),
+            enabled=Env.EVALUATION_ENABLED,
+            quality_threshold=Env.EVALUATION_QUALITY_THRESHOLD,
+            p50_threshold_ms=Env.EVALUATION_P50_THRESHOLD_MS,
+            p99_threshold_ms=Env.EVALUATION_P99_THRESHOLD_MS,
+            error_rate_threshold=Env.EVALUATION_ERROR_RATE_THRESHOLD,
+            test_data_path=Env.EVALUATION_TEST_DATA_PATH,
+            timeout_seconds=Env.EVALUATION_TIMEOUT_SECONDS,
         )
 
         return cls(
-            project_id=os.getenv("AGENT_PROJECT_ID", ""),
-            location=os.getenv("AGENT_LOCATION", "asia-northeast3"),
-            model=os.getenv("AGENT_MODEL", "gemini-2.5-pro"),
-            temperature=float(os.getenv("AGENT_TEMPERATURE", "0.7")),
-            max_tokens=int(os.getenv("AGENT_MAX_TOKENS", "4096")),
+            project_id=Env.AGENT_PROJECT_ID,
+            location=Env.AGENT_LOCATION,
+            model=Env.AGENT_MODEL,
+            temperature=Env.AGENT_TEMPERATURE,
+            max_tokens=Env.AGENT_MAX_TOKENS,
             system_prompt=system_prompt,
-            display_name=os.getenv("AGENT_DISPLAY_NAME", "pydantic-ai-agent"),
-            description=os.getenv(
-                "AGENT_DESCRIPTION", "Pydantic AI Agent on VertexAI Agent Engine"
-            ),
-            log_level=os.getenv("LOG_LEVEL", "INFO"),
-            log_format=os.getenv("LOG_FORMAT", "json"),
+            display_name=Env.AGENT_DISPLAY_NAME,
+            description=Env.AGENT_DESCRIPTION,
+            log_level=Env.LOG_LEVEL,
+            log_format=Env.LOG_FORMAT,
             session=session_config,
             memory=memory_config,
             observability=observability_config,

@@ -17,16 +17,24 @@ class TestPydanticAIAgentWrapper:
 
     def test_init_default_values(self) -> None:
         """Test initialization with default values."""
+        from agent_engine.constants import (
+            DEFAULT_LOCATION,
+            DEFAULT_MAX_TOKENS,
+            DEFAULT_MODEL,
+            DEFAULT_SYSTEM_PROMPT,
+            DEFAULT_TEMPERATURE,
+        )
+
         agent = PydanticAIAgentWrapper()
 
-        # Note: default model is gemini-2.5-flash (from AGENT_MODEL env var or hardcoded default)
-        assert agent.model_name == "gemini-2.5-flash"
+        # Note: defaults come from agent_engine.constants
+        assert agent.model_name == DEFAULT_MODEL
         assert agent.project == ""
-        assert agent.location == "asia-northeast3"
-        assert agent.system_prompt == "You are a helpful AI assistant."
+        assert agent.location == DEFAULT_LOCATION
+        assert agent.system_prompt == DEFAULT_SYSTEM_PROMPT
         assert agent.tools == []
-        assert agent.temperature == 0.7
-        assert agent.max_tokens == 4096
+        assert agent.temperature == DEFAULT_TEMPERATURE
+        assert agent.max_tokens == DEFAULT_MAX_TOKENS
         assert agent._is_setup is False
 
     def test_init_custom_values(self) -> None:
