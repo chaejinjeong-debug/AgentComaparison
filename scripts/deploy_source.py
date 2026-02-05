@@ -7,19 +7,27 @@ using the source-based deployment method, suitable for CI/CD pipelines.
 Requirement: DM-002 - Source-based deployment (CI/CD)
 
 Usage:
-    python scripts/deploy_source.py --project YOUR_PROJECT --location asia-northeast3
+    python scripts/deploy_source.py deploy --project YOUR_PROJECT --location asia-northeast3
 
-    # With custom staging bucket
-    python scripts/deploy_source.py \\
+    # With labels for versioning
+    python scripts/deploy_source.py deploy \\
         --project YOUR_PROJECT \\
         --location asia-northeast3 \\
-        --staging-bucket gs://your-bucket/staging
+        --labels "environment=staging,version=v1.2.0"
+
+    # Upsert mode (default): update if exists, create if not
+    python scripts/deploy_source.py deploy \\
+        --project YOUR_PROJECT \\
+        --display-name "pydantic-ai-agent-staging" \\
+        --upsert
 """
 
 import argparse
 import sys
 from pathlib import Path
 
+import google.auth
+import google.auth.transport.requests
 import structlog
 
 structlog.configure(
@@ -67,6 +75,120 @@ CLASS_METHODS = [
 ]
 
 
+def parse_labels(labels_str: str) -> dict[str, str]:
+    """Parse labels string into dictionary.
+
+    Args:
+        labels_str: Comma-separated key=value pairs (e.g., "environment=staging,version=v1.0.0")
+
+    Returns:
+        Dictionary of labels
+    """
+    if not labels_str:
+        return {}
+
+    labels = {}
+    for pair in labels_str.split(","):
+        pair = pair.strip()
+        if "=" in pair:
+            key, value = pair.split("=", 1)
+            labels[key.strip()] = value.strip()
+    return labels
+
+
+def find_agent_by_display_name(client, display_name: str) -> str | None:
+    """Find an existing agent by display_name.
+
+    Args:
+        client: Vertex AI client
+        display_name: Agent display name to search for
+
+    Returns:
+        Agent resource name if found, None otherwise
+    """
+    try:
+        agents = client.agent_engines.list()
+        for agent in agents:
+            if agent.display_name == display_name:
+                logger.info(
+                    "agent_found_by_display_name",
+                    display_name=display_name,
+                    agent_name=agent.api_resource.name,
+                )
+                return agent.api_resource.name
+    except Exception as e:
+        logger.warning("agent_search_failed", error=str(e))
+
+    logger.info("agent_not_found", display_name=display_name)
+    return None
+
+
+def update_agent_labels(
+    project: str, location: str, agent_name: str, labels: dict[str, str]
+) -> None:
+    """Update agent labels using REST API.
+
+    The Python SDK doesn't support labels, so we use the REST API directly.
+
+    Args:
+        project: GCP project ID
+        location: GCP region
+        agent_name: Full agent resource name
+        labels: Dictionary of labels to set
+    """
+    import json
+    import urllib.request
+
+    if not labels:
+        logger.info("no_labels_to_update")
+        return
+
+    # Get credentials
+    credentials, _ = google.auth.default()
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)
+
+    # Build REST API URL
+    # Agent name format: projects/{project}/locations/{location}/reasoningEngines/{id}
+    api_url = f"https://{location}-aiplatform.googleapis.com/v1/{agent_name}"
+
+    # Prepare PATCH request with labels
+    patch_data = {"labels": labels}
+    update_mask = "labels"
+
+    url_with_mask = f"{api_url}?updateMask={update_mask}"
+
+    headers = {
+        "Authorization": f"Bearer {credentials.token}",
+        "Content-Type": "application/json",
+    }
+
+    request = urllib.request.Request(
+        url_with_mask,
+        data=json.dumps(patch_data).encode("utf-8"),
+        headers=headers,
+        method="PATCH",
+    )
+
+    try:
+        with urllib.request.urlopen(request) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            logger.info(
+                "labels_updated_successfully",
+                agent_name=agent_name,
+                labels=labels,
+            )
+            return result
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8")
+        logger.error(
+            "labels_update_failed",
+            status=e.code,
+            error=error_body,
+        )
+        raise
+
+
 def deploy_from_source(
     project: str,
     location: str,
@@ -75,8 +197,10 @@ def deploy_from_source(
     staging_bucket: str | None = None,
     model: str = "gemini-2.5-pro",
     system_prompt: str = "You are a helpful AI assistant.",
+    labels: dict[str, str] | None = None,
+    upsert: bool = True,
 ) -> str:
-    """Deploy the agent from source files.
+    """Deploy the agent from source files with upsert support.
 
     Args:
         project: GCP project ID
@@ -86,6 +210,8 @@ def deploy_from_source(
         staging_bucket: Optional GCS bucket for staging files
         model: Gemini model name
         system_prompt: System prompt for the agent
+        labels: Optional labels dict (environment, version, etc.)
+        upsert: If True, update existing agent instead of creating new
 
     Returns:
         Deployed agent resource name
@@ -98,6 +224,8 @@ def deploy_from_source(
         location=location,
         display_name=display_name,
         staging_bucket=staging_bucket,
+        upsert=upsert,
+        labels=labels,
     )
 
     # Create Vertex AI client
@@ -120,33 +248,60 @@ def deploy_from_source(
 
     logger.info("source_packages_verified", packages=source_packages)
 
-    # Note: Dependencies are specified in agent_engine/requirements.txt
-    # Agent Engine automatically installs dependencies from requirements.txt in source_packages
+    # Check for existing agent if upsert mode
+    existing_agent_name = None
+    if upsert:
+        existing_agent_name = find_agent_by_display_name(client, display_name)
 
-    # Deploy from source using client.agent_engines.create()
-    deployed_agent = client.agent_engines.create(
-        config={
-            "source_packages": source_packages,
-            "entrypoint_module": ENTRYPOINT_MODULE,
-            "entrypoint_object": ENTRYPOINT_OBJECT,
-            "class_methods": CLASS_METHODS,
-            "display_name": display_name,
-            "description": description,
-            "requirements_file": "agent_engine/requirements.txt",
-            # Note: GOOGLE_CLOUD_PROJECT is automatically set by Agent Engine runtime
-            "env_vars": {
-                "AGENT_LOCATION": location,
-                "AGENT_MODEL": model,  # Model to use for the agent
-            },
-        }
-    )
+    if existing_agent_name:
+        # Update existing agent
+        logger.info("updating_existing_agent", agent_name=existing_agent_name)
+        agent = client.agent_engines.get(name=existing_agent_name)
+        agent.update(
+            config={
+                "source_packages": source_packages,
+                "entrypoint_module": ENTRYPOINT_MODULE,
+                "entrypoint_object": ENTRYPOINT_OBJECT,
+                "class_methods": CLASS_METHODS,
+                "description": description,
+                "requirements_file": "agent_engine/requirements.txt",
+                "env_vars": {
+                    "AGENT_LOCATION": location,
+                    "AGENT_MODEL": model,
+                },
+            }
+        )
+        agent_name = agent.api_resource.name
+        logger.info("agent_updated", agent_name=agent_name)
+    else:
+        # Create new agent
+        logger.info("creating_new_agent", display_name=display_name)
+        deployed_agent = client.agent_engines.create(
+            config={
+                "source_packages": source_packages,
+                "entrypoint_module": ENTRYPOINT_MODULE,
+                "entrypoint_object": ENTRYPOINT_OBJECT,
+                "class_methods": CLASS_METHODS,
+                "display_name": display_name,
+                "description": description,
+                "requirements_file": "agent_engine/requirements.txt",
+                "env_vars": {
+                    "AGENT_LOCATION": location,
+                    "AGENT_MODEL": model,
+                },
+            }
+        )
+        agent_name = deployed_agent.api_resource.name
 
-    agent_name = deployed_agent.api_resource.name
+    # Update labels via REST API (SDK doesn't support labels)
+    if labels:
+        update_agent_labels(project, location, agent_name, labels)
 
     logger.info(
         "source_deployment_complete",
         agent_name=agent_name,
         display_name=display_name,
+        labels=labels,
     )
 
     return agent_name
@@ -280,6 +435,23 @@ def main() -> None:
         help="System prompt",
     )
     deploy_parser.add_argument(
+        "--labels",
+        default="",
+        help="Comma-separated labels (e.g., 'environment=staging,version=v1.0.0')",
+    )
+    deploy_parser.add_argument(
+        "--upsert",
+        action="store_true",
+        default=True,
+        help="Update existing agent if found (default: True)",
+    )
+    deploy_parser.add_argument(
+        "--no-upsert",
+        action="store_false",
+        dest="upsert",
+        help="Always create new agent",
+    )
+    deploy_parser.add_argument(
         "--verify", action="store_true", help="Verify deployment with test query"
     )
 
@@ -304,6 +476,9 @@ def main() -> None:
 
     try:
         if args.command == "deploy":
+            # Parse labels from command line
+            labels = parse_labels(args.labels) if args.labels else None
+
             agent_name = deploy_from_source(
                 project=args.project,
                 location=args.location,
@@ -312,6 +487,8 @@ def main() -> None:
                 staging_bucket=args.staging_bucket,
                 model=args.model,
                 system_prompt=args.system_prompt,
+                labels=labels,
+                upsert=args.upsert,
             )
 
             print("\nAgent deployed successfully from source!")
