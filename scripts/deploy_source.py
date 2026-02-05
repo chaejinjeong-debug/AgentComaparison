@@ -136,9 +136,9 @@ def deploy_from_source(
         source_packages = [str(temp_pkg_path)]
         logger.info("source_packages_verified", packages=source_packages)
 
-    # Create temporary requirements file for deployment
-    # Include all core dependencies from pyproject.toml
-    requirements_content = """pydantic-ai-slim[google]>=1.51.0
+        # Create temporary requirements file for deployment
+        # Include all core dependencies from pyproject.toml
+        requirements_content = """pydantic-ai-slim[google]>=1.51.0
 google-cloud-aiplatform[agent_engines]>=1.78.0
 structlog>=24.0.0
 python-dotenv>=1.0.0
@@ -152,9 +152,9 @@ google-cloud-logging>=3.8.0
 google-cloud-monitoring>=2.18.0
 pyyaml>=6.0.3
 """
-    requirements_file = project_root / ".agent_requirements.txt"
-    requirements_file.write_text(requirements_content)
-    logger.info("requirements_file_created", path=str(requirements_file))
+        requirements_file = project_root / ".agent_requirements.txt"
+        requirements_file.write_text(requirements_content)
+        logger.info("requirements_file_created", path=str(requirements_file))
 
         # Deploy from source using client.agent_engines.create()
         deployed_agent = client.agent_engines.create(
