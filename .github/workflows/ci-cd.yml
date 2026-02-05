@@ -1,0 +1,622 @@
+# Unified CI/CD Pipeline for AgentEngine
+# Combines CI, Staging Deployment, Production Deployment, and Evaluation
+
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+    paths:
+      - 'agent_engine/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - '.github/workflows/*.yml'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'agent_engine/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - '.github/workflows/*.yml'
+  workflow_dispatch:
+    inputs:
+      skip_ci:
+        description: 'Skip CI checks (긴급 배포용)'
+        type: boolean
+        default: false
+      deploy_staging:
+        description: 'Deploy to staging'
+        type: boolean
+        default: true
+      run_evaluation:
+        description: 'Run agent evaluation'
+        type: boolean
+        default: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  UV_CACHE_DIR: ~/.cache/uv
+  EVALUATION_THRESHOLD: '0.85'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # CI Jobs (setup, lint, typecheck, security, test, quality-gate)
+  # Runs on: push/PR to branches (not tags), workflow_dispatch (unless skip_ci)
+  # ============================================================================
+
+  setup:
+    name: Setup Environment
+    runs-on: ubuntu-latest
+    if: |
+      !startsWith(github.ref, 'refs/tags/v') &&
+      !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_ci == 'true')
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.key }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate cache key
+        id: cache-key
+        run: |
+          echo "key=uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}" >> $GITHUB_OUTPUT
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          uv venv .venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    needs: setup
+    if: |
+      !startsWith(github.ref, 'refs/tags/v') &&
+      !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_ci == 'true')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ needs.setup.outputs.cache-key }}
+
+      - name: Run ruff check
+        run: |
+          source .venv/bin/activate
+          echo "=== Running ruff check ==="
+          ruff check agent_engine/ scripts/
+
+      - name: Run ruff format check
+        run: |
+          source .venv/bin/activate
+          echo "=== Running ruff format check ==="
+          ruff format --check agent_engine/ scripts/
+
+  typecheck:
+    name: Type Check (mypy)
+    runs-on: ubuntu-latest
+    needs: setup
+    if: |
+      !startsWith(github.ref, 'refs/tags/v') &&
+      !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_ci == 'true')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ needs.setup.outputs.cache-key }}
+
+      - name: Run mypy
+        run: |
+          source .venv/bin/activate
+          echo "=== Running mypy ==="
+          mypy agent_engine/ --ignore-missing-imports
+
+  security:
+    name: Security Scan (bandit)
+    runs-on: ubuntu-latest
+    needs: setup
+    if: |
+      !startsWith(github.ref, 'refs/tags/v') &&
+      !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_ci == 'true')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ needs.setup.outputs.cache-key }}
+
+      - name: Run bandit
+        run: |
+          source .venv/bin/activate
+          echo "=== Running bandit security scan ==="
+          bandit -r agent_engine/ -ll -ii
+
+  test:
+    name: Test (pytest)
+    runs-on: ubuntu-latest
+    needs: [setup, lint, typecheck, security]
+    if: |
+      !startsWith(github.ref, 'refs/tags/v') &&
+      !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_ci == 'true')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ needs.setup.outputs.cache-key }}
+
+      - name: Run pytest with coverage
+        run: |
+          source .venv/bin/activate
+          echo "=== Running pytest with coverage ==="
+          pytest tests/ \
+            --cov=agent_engine \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:coverage_html \
+            --cov-report=term-missing \
+            --cov-fail-under=60 \
+            -v
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.xml
+            coverage_html/
+          retention-days: 30
+
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [setup, test]
+    if: |
+      !startsWith(github.ref, 'refs/tags/v') &&
+      !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_ci == 'true')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ needs.setup.outputs.cache-key }}
+
+      - name: Run quality gate checks
+        run: |
+          source .venv/bin/activate
+          echo "=== Running quality gate checks ==="
+          python scripts/ci/run_quality_checks.py
+
+      - name: Upload quality report
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: quality_report.json
+          retention-days: 30
+        if: always()
+
+  # ============================================================================
+  # Staging Deployment
+  # Runs on: main/develop push after CI, workflow_dispatch (with or without skip_ci)
+  # ============================================================================
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [quality-gate]
+    if: |
+      always() &&
+      !startsWith(github.ref, 'refs/tags/v') &&
+      (
+        (github.event_name == 'push' &&
+         (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') &&
+         needs.quality-gate.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' &&
+         github.event.inputs.skip_ci == 'true' &&
+         github.event.inputs.deploy_staging == 'true') ||
+        (github.event_name == 'workflow_dispatch' &&
+         github.event.inputs.skip_ci != 'true' &&
+         github.event.inputs.deploy_staging == 'true' &&
+         needs.quality-gate.result == 'success')
+      )
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          uv venv .venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Deploy to Staging
+        run: |
+          source .venv/bin/activate
+          echo "=== Deploying to staging ==="
+          python scripts/deploy_source.py deploy \
+            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --location asia-northeast3 \
+            --display-name "pydantic-ai-agent-staging" \
+            --description "Pydantic AI Agent (Staging)"
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Verify Deployment
+        run: |
+          source .venv/bin/activate
+          echo "=== Verifying staging deployment ==="
+          gcloud ai agent-engines list \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --location=asia-northeast3 \
+            --format="table(name,displayName,state)"
+
+  # ============================================================================
+  # Agent Evaluation
+  # Runs on: main branch after staging deployment success
+  # ============================================================================
+
+  evaluation:
+    name: Run Agent Evaluation
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    if: |
+      always() &&
+      needs.deploy-staging.result == 'success' &&
+      (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.run_evaluation == 'true')
+      )
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          uv venv .venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Run Agent Evaluation
+        id: evaluation
+        run: |
+          source .venv/bin/activate
+          echo "=== Running agent evaluation ==="
+          python scripts/evaluation/run_evaluation.py \
+            --threshold ${{ env.EVALUATION_THRESHOLD }} \
+            --output-json evaluation_results.json \
+            --output-md evaluation_report.md
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Upload Evaluation Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-results
+          path: |
+            evaluation_results.json
+            evaluation_report.md
+          retention-days: 90
+        if: always()
+
+      - name: Check Evaluation Threshold
+        run: |
+          source .venv/bin/activate
+          if [ -f evaluation_results.json ]; then
+            SCORE=$(python -c "import json; print(json.load(open('evaluation_results.json'))['overall_score'])")
+            echo "Evaluation Score: $SCORE"
+            if (( $(echo "$SCORE < ${{ env.EVALUATION_THRESHOLD }}" | bc -l) )); then
+              echo "::error::Evaluation score ($SCORE) is below threshold (${{ env.EVALUATION_THRESHOLD }})"
+              exit 1
+            fi
+            echo "::notice::Evaluation passed with score: $SCORE"
+          else
+            echo "::warning::Evaluation results file not found"
+          fi
+        if: always()
+
+      - name: Post Evaluation Summary
+        run: |
+          if [ -f evaluation_report.md ]; then
+            echo "## Agent Evaluation Summary" >> $GITHUB_STEP_SUMMARY
+            cat evaluation_report.md >> $GITHUB_STEP_SUMMARY
+          fi
+        if: always()
+
+  # ============================================================================
+  # Production Deployment
+  # Runs on: v* tag push only
+  # ============================================================================
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          uv venv .venv
+          source .venv/bin/activate
+          uv pip install -e ".[dev]"
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Production
+        run: |
+          source .venv/bin/activate
+          echo "=== Deploying to production: ${{ steps.version.outputs.VERSION }} ==="
+          python scripts/deploy_source.py deploy \
+            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --location asia-northeast3 \
+            --display-name "pydantic-ai-agent-production" \
+            --description "Pydantic AI Agent (Production) - ${{ steps.version.outputs.VERSION }}"
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Register Version
+        run: |
+          source .venv/bin/activate
+          echo "=== Registering version: ${{ steps.version.outputs.VERSION }} ==="
+          python scripts/version/register.py --version ${{ steps.version.outputs.VERSION }}
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Verify Production Deployment
+        run: |
+          source .venv/bin/activate
+          echo "=== Verifying production deployment ==="
+          gcloud ai agent-engines list \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --location=asia-northeast3 \
+            --format="table(name,displayName,state)"
+
+      - name: Generate Release Notes
+        id: release-notes
+        run: |
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "## AgentEngine ${{ steps.version.outputs.VERSION }}" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "### Deployment Info" >> $GITHUB_OUTPUT
+          echo "- **Environment**: Production" >> $GITHUB_OUTPUT
+          echo "- **Region**: asia-northeast3" >> $GITHUB_OUTPUT
+          echo "- **Deployed at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "### Changes" >> $GITHUB_OUTPUT
+          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD 2>/dev/null || echo "- Initial release"
+          echo "" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
+          name: AgentEngine ${{ steps.version.outputs.VERSION }}
+          body: ${{ steps.release-notes.outputs.NOTES }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
