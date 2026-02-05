@@ -111,9 +111,14 @@ def deploy_from_source(
     # Create Vertex AI client
     client = vertexai.Client(project=project, location=location)
 
-    # Get absolute paths for source packages
+    # Change to project root directory for relative path resolution
+    import os
     project_root = Path(__file__).parent.parent
-    source_packages = [str(project_root / pkg) for pkg in SOURCE_PACKAGES]
+    os.chdir(project_root)
+    logger.info("working_directory_changed", cwd=str(project_root))
+
+    # Use relative paths for source packages (SDK expects relative paths)
+    source_packages = SOURCE_PACKAGES
 
     # Verify source packages exist
     for pkg in source_packages:
@@ -137,7 +142,7 @@ google-cloud-logging>=3.8.0
 google-cloud-monitoring>=2.18.0
 pyyaml>=6.0.3
 """
-    requirements_file = project_root / ".agent_requirements.txt"
+    requirements_file = Path(".agent_requirements.txt")
     requirements_file.write_text(requirements_content)
     logger.info("requirements_file_created", path=str(requirements_file))
 
@@ -150,7 +155,7 @@ pyyaml>=6.0.3
             "class_methods": CLASS_METHODS,
             "display_name": display_name,
             "description": description,
-            "requirements_file": str(requirements_file),
+            "requirements_file": str(requirements_file.absolute()),
             "env_vars": {
                 "AGENT_LOCATION": location,
             },
@@ -197,9 +202,13 @@ def update_agent_from_source(
     # Create Vertex AI client
     client = vertexai.Client(project=project, location=location)
 
-    # Get absolute paths for source packages
+    # Change to project root directory for relative path resolution
+    import os
     project_root = Path(__file__).parent.parent
-    source_packages = [str(project_root / pkg) for pkg in SOURCE_PACKAGES]
+    os.chdir(project_root)
+
+    # Use relative paths for source packages
+    source_packages = SOURCE_PACKAGES
 
     # Get existing agent
     agent = client.agent_engines.get(agent_name)
