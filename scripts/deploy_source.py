@@ -139,6 +139,7 @@ def deploy_from_source(
             "class_methods": CLASS_METHODS,
             "display_name": display_name,
             "description": description,
+            "requirements_file": "agent_engine/requirements.txt",
             "env_vars": {
                 "AGENT_LOCATION": location,
             },
@@ -202,6 +203,7 @@ def update_agent_from_source(
             "source_packages": source_packages,
             "entrypoint_module": ENTRYPOINT_MODULE,
             "entrypoint_object": ENTRYPOINT_OBJECT,
+            "requirements_file": "agent_engine/requirements.txt",
         }
     )
 
