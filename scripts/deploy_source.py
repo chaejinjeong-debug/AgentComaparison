@@ -127,24 +127,23 @@ def deploy_from_source(
 
     logger.info("source_packages_verified", packages=source_packages)
 
-    # Create temporary requirements file for deployment
-    requirements_content = """pydantic-ai-slim[google]>=1.51.0
-google-cloud-aiplatform[agent_engines]>=1.78.0
-structlog>=24.0.0
-python-dotenv>=1.0.0
-pydantic>=2.0.0
-opentelemetry-api>=1.20.0
-opentelemetry-sdk>=1.20.0
-opentelemetry-exporter-gcp-trace>=1.6.0
-opentelemetry-exporter-gcp-monitoring>=1.6.0
-google-cloud-trace>=1.11.0
-google-cloud-logging>=3.8.0
-google-cloud-monitoring>=2.18.0
-pyyaml>=6.0.3
-"""
-    requirements_file = Path(".agent_requirements.txt")
-    requirements_file.write_text(requirements_content)
-    logger.info("requirements_file_created", path=str(requirements_file))
+    # Dependencies for deployment
+    requirements = [
+        "pydantic-ai-slim[google]>=1.51.0",
+        "google-cloud-aiplatform[agent_engines]>=1.78.0",
+        "structlog>=24.0.0",
+        "python-dotenv>=1.0.0",
+        "pydantic>=2.0.0",
+        "opentelemetry-api>=1.20.0",
+        "opentelemetry-sdk>=1.20.0",
+        "opentelemetry-exporter-gcp-trace>=1.6.0",
+        "opentelemetry-exporter-gcp-monitoring>=1.6.0",
+        "google-cloud-trace>=1.11.0",
+        "google-cloud-logging>=3.8.0",
+        "google-cloud-monitoring>=2.18.0",
+        "pyyaml>=6.0.3",
+    ]
+    logger.info("requirements_prepared", count=len(requirements))
 
     # Deploy from source using client.agent_engines.create()
     deployed_agent = client.agent_engines.create(
@@ -155,7 +154,7 @@ pyyaml>=6.0.3
             "class_methods": CLASS_METHODS,
             "display_name": display_name,
             "description": description,
-            "requirements_file": str(requirements_file.absolute()),
+            "requirements": requirements,
             "env_vars": {
                 "AGENT_LOCATION": location,
             },
