@@ -67,24 +67,62 @@ class TestPydanticAIAgentWrapper:
         assert len(agent.tools) == 2
 
     @pytest.mark.asyncio
-    async def test_query_without_setup_raises_error(self) -> None:
-        """Test that query without setup raises AgentConfigError."""
+    @patch("vertexai.init")
+    @patch("pydantic_ai.providers.google.GoogleProvider")
+    @patch("pydantic_ai.models.google.GoogleModel")
+    @patch("pydantic_ai.Agent")
+    async def test_query_without_explicit_setup_auto_initializes(
+        self,
+        mock_agent_class: MagicMock,
+        mock_model: MagicMock,
+        mock_provider: MagicMock,
+        mock_vertexai: MagicMock,
+    ) -> None:
+        """Test that query auto-initializes if not explicitly set up."""
+        mock_pydantic_agent = MagicMock()
+        mock_pydantic_agent.run = AsyncMock(return_value=MagicMock(
+            data="Test response",
+            all_messages=MagicMock(return_value=[]),
+        ))
+        mock_agent_class.return_value = mock_pydantic_agent
+
         agent = PydanticAIAgentWrapper(project="test")
+        assert agent._is_setup is False
 
-        with pytest.raises(AgentConfigError) as exc_info:
-            await agent.query(message="Hello")
+        # Query should auto-initialize
+        await agent.query(message="Hello")
 
-        assert "not set up" in str(exc_info.value).lower()
+        # Agent should now be set up
+        assert agent._is_setup is True
 
     @pytest.mark.asyncio
-    async def test_aquery_without_setup_raises_error(self) -> None:
-        """Test that async query without setup raises AgentConfigError."""
+    @patch("vertexai.init")
+    @patch("pydantic_ai.providers.google.GoogleProvider")
+    @patch("pydantic_ai.models.google.GoogleModel")
+    @patch("pydantic_ai.Agent")
+    async def test_aquery_without_explicit_setup_auto_initializes(
+        self,
+        mock_agent_class: MagicMock,
+        mock_model: MagicMock,
+        mock_provider: MagicMock,
+        mock_vertexai: MagicMock,
+    ) -> None:
+        """Test that aquery auto-initializes if not explicitly set up."""
+        mock_pydantic_agent = MagicMock()
+        mock_pydantic_agent.run = AsyncMock(return_value=MagicMock(
+            data="Test response",
+            all_messages=MagicMock(return_value=[]),
+        ))
+        mock_agent_class.return_value = mock_pydantic_agent
+
         agent = PydanticAIAgentWrapper(project="test")
+        assert agent._is_setup is False
 
-        with pytest.raises(AgentConfigError) as exc_info:
-            await agent.aquery(message="Hello")
+        # Query should auto-initialize
+        await agent.aquery(message="Hello")
 
-        assert "not set up" in str(exc_info.value).lower()
+        # Agent should now be set up
+        assert agent._is_setup is True
 
     def test_add_tool(self) -> None:
         """Test adding a tool."""
@@ -329,15 +367,45 @@ class TestAgentStreamQuery:
     """Test suite for agent streaming query functionality."""
 
     @pytest.mark.asyncio
-    async def test_stream_query_without_setup_raises_error(self) -> None:
-        """Test that stream query without setup raises AgentConfigError."""
+    @patch("vertexai.init")
+    @patch("pydantic_ai.providers.google.GoogleProvider")
+    @patch("pydantic_ai.models.google.GoogleModel")
+    @patch("pydantic_ai.Agent")
+    async def test_stream_query_without_explicit_setup_auto_initializes(
+        self,
+        mock_agent_class: MagicMock,
+        mock_model: MagicMock,
+        mock_provider: MagicMock,
+        mock_vertexai: MagicMock,
+    ) -> None:
+        """Test that stream query auto-initializes if not explicitly set up."""
+        # Create mock stream
+        mock_stream = MagicMock()
+        mock_result = MagicMock()
+        mock_result.tool_calls = []
+        mock_stream.result = mock_result
+
+        async def mock_stream_text():
+            yield "Hello"
+
+        mock_stream.stream_text = mock_stream_text
+
+        mock_pydantic_agent = MagicMock()
+        mock_stream_cm = MagicMock()
+        mock_stream_cm.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_pydantic_agent.run_stream = MagicMock(return_value=mock_stream_cm)
+        mock_agent_class.return_value = mock_pydantic_agent
+
         agent = PydanticAIAgentWrapper(project="test")
+        assert agent._is_setup is False
 
-        with pytest.raises(AgentConfigError) as exc_info:
-            async for _ in agent.stream_query(message="Hello"):
-                pass
+        # Stream query should auto-initialize
+        async for _ in agent.stream_query(message="Hello"):
+            pass
 
-        assert "not set up" in str(exc_info.value).lower()
+        # Agent should now be set up
+        assert agent._is_setup is True
 
     @pytest.mark.asyncio
     @patch("vertexai.init")
