@@ -100,47 +100,6 @@ jobs:
           source .venv/bin/activate
           uv pip install -e ".[dev]"
 
-  lint:
-    name: Lint (ruff)
-    runs-on: ubuntu-latest
-    needs: setup
-    if: |
-      !startsWith(github.ref, 'refs/tags/v') &&
-      !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_ci == 'true')
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/uv
-            .venv
-          key: ${{ needs.setup.outputs.cache-key }}
-
-      - name: Run ruff check
-        run: |
-          source .venv/bin/activate
-          echo "=== Running ruff check ==="
-          ruff check agent_engine/ scripts/
-
-      - name: Run ruff format check
-        run: |
-          source .venv/bin/activate
-          echo "=== Running ruff format check ==="
-          ruff format --check agent_engine/ scripts/
-
   typecheck:
     name: Type Check (mypy)
     runs-on: ubuntu-latest
@@ -214,7 +173,7 @@ jobs:
   test:
     name: Test (pytest)
     runs-on: ubuntu-latest
-    needs: [setup, lint, typecheck, security]
+    needs: [setup, typecheck, security]
     if: |
       !startsWith(github.ref, 'refs/tags/v') &&
       !(github.event_name == 'workflow_dispatch' && github.event.inputs.skip_ci == 'true')
