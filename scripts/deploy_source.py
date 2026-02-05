@@ -127,8 +127,8 @@ def deploy_from_source(
 
     logger.info("source_packages_verified", packages=source_packages)
 
-    # Dependencies for deployment
-    requirements = [
+    # Dependencies for deployment (as extra_packages for source-based deployment)
+    extra_packages = [
         "pydantic-ai-slim[google]>=1.51.0",
         "google-cloud-aiplatform[agent_engines]>=1.78.0",
         "structlog>=24.0.0",
@@ -143,7 +143,7 @@ def deploy_from_source(
         "google-cloud-monitoring>=2.18.0",
         "pyyaml>=6.0.3",
     ]
-    logger.info("requirements_prepared", count=len(requirements))
+    logger.info("extra_packages_prepared", count=len(extra_packages))
 
     # Deploy from source using client.agent_engines.create()
     deployed_agent = client.agent_engines.create(
@@ -154,7 +154,7 @@ def deploy_from_source(
             "class_methods": CLASS_METHODS,
             "display_name": display_name,
             "description": description,
-            "requirements": requirements,
+            "extra_packages": extra_packages,
             "env_vars": {
                 "AGENT_LOCATION": location,
             },
