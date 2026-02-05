@@ -6,7 +6,6 @@ the BaseAgent interface using Pydantic AI and Google's Gemini models.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import TYPE_CHECKING, Any
 

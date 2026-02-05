@@ -104,7 +104,11 @@ class PydanticAIAgentWrapper:
         # Fall back to environment variables for model, project, and location
         # GOOGLE_CLOUD_PROJECT is set automatically by Agent Engine
         self.model_name = model or os.environ.get("AGENT_MODEL", "gemini-2.5-flash")
-        self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT", "") or os.environ.get("AGENT_PROJECT_ID", "")
+        self.project = (
+            project
+            or os.environ.get("GOOGLE_CLOUD_PROJECT", "")
+            or os.environ.get("AGENT_PROJECT_ID", "")
+        )
         self.location = location or os.environ.get("AGENT_LOCATION", "asia-northeast3")
         self.system_prompt = system_prompt
         self.tools = list(tools) if tools else []
